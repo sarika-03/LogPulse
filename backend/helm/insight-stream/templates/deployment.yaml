@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "insight-stream.fullname" . }}
+  labels:
+    app: {{ include "insight-stream.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "insight-stream.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "insight-stream.name" . }}
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LOGPULSE_PORT
+              value: "8080"
+            - name: LOGPULSE_STORAGE_PATH
+              value: "/data/logs"
+          volumeMounts:
+            - name: data
+              mountPath: /data/logs
+      volumes:
+        - name: data
+          emptyDir: {}

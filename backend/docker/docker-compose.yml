@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  logpulse:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8082:8080"
+    volumes:
+      - ../configs:/app/configs
+      - logpulse-data:/app/data
+    environment:
+      - LOG_LEVEL=info
+      - LOGPULSE_PORT=8080
+      - LOGPULSE_STORAGE_PATH=/app/data/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - logpulse-net
+
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    volumes:
+      - /var/log:/var/log:ro  # Mount host logs as read-only
+      - agent-positions:/app/positions
+    environment:
+      - LOGPULSE_SERVER_URL=http://logpulse:8080
+    depends_on:
+      - logpulse
+    restart: unless-stopped
+    networks:
+      - logpulse-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - logpulse-net
+    depends_on:
+      - logpulse
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    networks:
+      - logpulse-net
+    depends_on:
+      - prometheus
+
+volumes:
+  logpulse-data:
+  agent-positions:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  logpulse-net:
+    driver: bridge

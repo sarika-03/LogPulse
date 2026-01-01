@@ -1,0 +1,37 @@
+server:
+  url: "http://logpulse:8080"
+  api_key: ""  # Optional, set via LOGILITE_API_KEY env var
+
+positions_file: "./positions.json"
+
+targets:
+  # Watch system logs
+  # - path: "/var/log/syslog"
+  #   labels:
+  #     job: "syslog"
+  #     env: "prod"
+
+  # Watch all .log files in a directory
+  # - path: "/var/log/*.log"
+  #   labels:
+  #     job: "varlogs"
+  #     env: "prod"
+
+  # Watch application logs
+  # - path: "/app/logs/*.log"
+  #   labels:
+  #     job: "app"
+  #     service: "myapp"
+  #     env: "prod"
+
+  # Watch nginx access logs
+  # - path: "/var/log/nginx/access.log"
+  #   labels:
+  #     job: "nginx"
+  #     type: "access"
+
+  # Watch nginx error logs
+  # - path: "/var/log/nginx/error.log"
+  #   labels:
+  #     job: "nginx"
+  #     type: "error"

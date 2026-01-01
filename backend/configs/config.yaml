@@ -1,0 +1,15 @@
+server:
+  port: "8080"
+
+storage:
+  path: "./data/logs"
+  chunk_size_bytes: 1048576  # 1MB
+  retention_days: 7
+
+ingest:
+  buffer_size: 1000
+  flush_interval_ms: 5000
+
+auth:
+  enabled: false
+  api_key: ""  # Set via LOKILITE_API_KEY env var

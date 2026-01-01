@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: insight-stream
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insight-stream-backend
+  namespace: insight-stream
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insight-stream-backend
+  template:
+    metadata:
+      labels:
+        app: insight-stream-backend
+    spec:
+      containers:
+        - name: backend
+          image: your-dockerhub-username/insight-stream-backend:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LOGPULSE_PORT
+              value: "8080"
+            - name: LOGPULSE_STORAGE_PATH
+              value: "/data/logs"
+          volumeMounts:
+            - name: data
+              mountPath: /data/logs
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: insight-stream-backend
+  namespace: insight-stream
+spec:
+  selector:
+    app: insight-stream-backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: insight-stream-backend
+  namespace: insight-stream
+spec:
+  selector:
+    matchLabels:
+      app: insight-stream-backend
+  endpoints:
+    - port: http
+      path: /prometheus-metrics
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - insight-stream

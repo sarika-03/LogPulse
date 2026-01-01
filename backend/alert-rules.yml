@@ -1,0 +1,98 @@
+groups:
+  - name: logpulse_streaming
+    interval: 10s
+    rules:
+      # Critical alerts
+      - alert: BroadcastChannelOverflow
+        expr: rate(logpulse_dropped_broadcasts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: logpulse
+        annotations:
+          summary: "LogPulse broadcast queue overflowing"
+          description: "{{ $value | humanize }} broadcasts/sec being dropped. Stream clients may be missing logs."
+
+      - alert: StreamIngestTimeout
+        expr: logpulse_ingest_timeout_total > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: logpulse
+        annotations:
+          summary: "LogPulse ingest requests timing out"
+          description: "Ingest pipeline blocked by streaming backpressure"
+
+      - alert: NoStreamClients
+        expr: logpulse_stream_clients_connected == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: logpulse
+        annotations:
+          summary: "No active stream clients for 10 minutes"
+          description: "Check if subscribers are connected and healthy"
+
+      # Warning alerts
+      - alert: HighStreamQueueUtilization
+        expr: |
+          (logpulse_stream_queue_size / 5000) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          service: logpulse
+        annotations:
+          summary: "Stream queue at {{ $value | humanizePercentage }} capacity"
+          description: "Consider investigating broadcast latency or slow subscribers"
+
+      - alert: LowStorageSpace
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/var/lib/logpulse"} / 
+           node_filesystem_size_bytes{mountpoint="/var/lib/logpulse"}) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: logpulse
+        annotations:
+          summary: "LogPulse storage below 10% free"
+          description: "{{ $value | humanizePercentage }} free space remaining"
+
+      # Info-level alerts
+      - alert: HighBroadcastLatency
+        expr: |
+          histogram_quantile(0.99, rate(logpulse_broadcast_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: info
+          service: logpulse
+        annotations:
+          summary: "High broadcast latency detected"
+          description: "P99 latency: {{ $value | humanizeDuration }}"
+
+  - name: logpulse_performance
+    interval: 30s
+    rules:
+      # Ingestion rate SLO
+      - alert: LowIngestionRate
+        expr: |
+          rate(logpulse_ingested_lines_total[5m]) < 100
+        for: 10m
+        labels:
+          severity: info
+          service: logpulse
+        annotations:
+          summary: "Ingestion rate below expected threshold"
+          description: "Current rate: {{ $value | humanize }} logs/sec"
+
+      # Broadcast vs ingest rate divergence
+      - alert: BroadcastLaggingIngestion
+        expr: |
+          (rate(logpulse_ingested_lines_total[5m]) - 
+           rate(logpulse_broadcasted_lines_total[5m])) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: logpulse
+        annotations:
+          summary: "Broadcast rate significantly lagging ingestion"
+          description: "Backlog building: {{ $value | humanize }} logs/sec difference"

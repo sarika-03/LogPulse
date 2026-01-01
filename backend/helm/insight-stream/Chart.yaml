@@ -1,0 +1,4 @@
+apiVersion: v2
+name: insight-stream
+version: 0.1.0
+description: A Helm chart for deploying Insight-Stream backend with Prometheus and Grafana integration

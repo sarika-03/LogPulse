@@ -1,0 +1,19 @@
+webhooks:
+  # Slack webhook (optional )
+  slack:
+    url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    enabled: false  # Set to true if you have Slack webhook URL
+  
+  # Local webhook for testing
+  webhook:
+    url: "http://localhost:9000/alerts"
+    enabled: true
+    retry: 3
+    timeout: 5s
+  
+  # Custom webhook
+  custom:
+    url: "http://localhost:8000/webhook"
+    enabled: false
+    headers:
+      Authorization: "Bearer token123"

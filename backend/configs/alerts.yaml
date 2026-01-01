@@ -1,0 +1,27 @@
+alerts:
+  - name: "High Error Rate"
+    expr: '{level="error"}'
+    threshold: 10
+    condition: ">"
+    duration: 5m
+    severity: "warning"
+    enabled: true
+    channels:
+      - slack
+      - webhook
+    labels:
+      service: "all"
+      env: "all"
+
+  - name: "Database Connection Failed"
+    expr: '{service="database", level="error"}'
+    threshold: 5
+    condition: ">"
+    duration: 2m
+    severity: "critical"
+    enabled: true
+    channels:
+      - slack
+    labels:
+      service: "database"
+      env: "production"

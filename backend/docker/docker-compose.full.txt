@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  logpulse:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs:/app/configs
+      - logpulse-data:/app/data
+    environment:
+      - LOG_LEVEL=info
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - monitoring
+    depends_on:
+      - logpulse
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../docker/grafana:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # alertmanager:
+  #   image: prom/alertmanager:latest
+  #   ports:
+  #     - "9093:9093"
+  #   volumes:
+  #     - ../alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+  #     - alertmanager-data:/alertmanager
+  #   command:
+  #     - '--config.file=/etc/alertmanager/alertmanager.yml'
+  #     - '--storage.path=/alertmanager'
+  #   networks:
+  #     - monitoring
+  #   depends_on:
+  #     - prometheus
+
+  # Optional: Fluentd for log forwarding
+  # fluentd:
+  #   image: fluent/fluentd:latest
+  #   ports:
+  #     - "24224:24224"
+  #     - "24224:24224/udp"
+  #   volumes:
+  #     - ../fluent.conf:/fluentd/etc/fluent.conf:ro
+  #     - ../data/logs:/fluentd/log
+  #   environment:
+  #     - FLUENTD_UID=0
+  #   networks:
+  #     - monitoring
+  #   depends_on:
+  #     - logpulse
+
+volumes:
+  logpulse-data:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+
+networks:
+  monitoring:
+    driver: bridge

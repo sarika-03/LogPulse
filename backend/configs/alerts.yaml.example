@@ -1,0 +1,30 @@
+# ALERTS CONFIGURATION
+# ====================
+# Copy this file to alerts.yaml and configure your alert rules
+# DO NOT COMMIT alerts.yaml with real webhook URLs to git!
+
+alerts:
+  - name: "High Error Rate"
+    expr: '{level="error"} | count_over_time([5m]) > 10'
+    threshold: 10
+    window: 5m
+    channels: ["slack", "webhook"]
+    labels:
+      severity: "critical"
+      team: "platform"
+
+  - name: "Service Down"
+    expr: '{service="api-gateway"} | latency > 5000'
+    threshold: 5000
+    window: 1m
+    channels: ["slack", "pagerduty"]
+    labels:
+      severity: "critical"
+
+  - name: "Memory Usage High"
+    expr: 'rate({job="memory"}[5m]) > 0.9'
+    threshold: 0.9
+    window: 10m
+    channels: ["webhook"]
+    labels:
+      severity: "warning"

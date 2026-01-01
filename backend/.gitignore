@@ -1,0 +1,24 @@
+# Binaries
+lokilite
+*.exe
+
+# Data
+data/
+*.log
+*.meta
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml

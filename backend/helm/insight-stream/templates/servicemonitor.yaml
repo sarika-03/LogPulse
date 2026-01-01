@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "insight-stream.fullname" . }}
+  labels:
+    app: {{ include "insight-stream.name" . }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "insight-stream.name" . }}
+  endpoints:
+    - port: http
+      path: /prometheus-metrics
+      interval: 15s

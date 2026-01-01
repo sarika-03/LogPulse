@@ -1,0 +1,9 @@
+replicaCount: 1
+image:
+  repository: your-dockerhub-username/insight-stream-backend
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 8080
+resources: {}

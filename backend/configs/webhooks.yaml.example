@@ -1,0 +1,21 @@
+# WEBHOOKS CONFIGURATION
+# =====================
+# Copy this file to webhooks.yaml and fill in your actual webhook URLs
+# DO NOT COMMIT webhooks.yaml with real URLs to git!
+
+webhooks:
+  # Slack webhook
+  - url: "https://hooks.slack.com/services/YOUR_TEAM/YOUR_CHANNEL/YOUR_TOKEN"
+    events: ["log", "alert"]
+    
+  # Discord webhook
+  - url: "https://discordapp.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN"
+    events: ["alert"]
+    
+  # Custom endpoint
+  - url: "http://localhost:9000/webhooks/logs"
+    events: ["log"]
+    
+  # PagerDuty
+  - url: "https://events.pagerduty.com/v2/enqueue"
+    events: ["alert"]

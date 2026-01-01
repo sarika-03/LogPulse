@@ -1,0 +1,120 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {"type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0"}
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {},
+      "targets": [
+        {"expr": "loki_handler_requests_total", "legendFormat": "{{endpoint}} {{method}}", "refId": "A"}
+      ],
+      "title": "API Requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {},
+      "targets": [
+        {"expr": "loki_handler_request_duration_seconds", "legendFormat": "{{endpoint}} {{method}}", "refId": "A"}
+      ],
+      "title": "Request Latency (s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {},
+      "targets": [
+        {"expr": "loki_handler_errors_total", "legendFormat": "{{endpoint}} {{method}}", "refId": "A"}
+      ],
+      "title": "API Errors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {},
+      "targets": [
+        {"expr": "lokiclone_ingested_lines_total", "refId": "A"}
+      ],
+      "title": "Ingested Log Lines",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 5,
+      "options": {},
+      "targets": [
+        {"expr": "lokiclone_ingested_bytes_total", "refId": "A"}
+      ],
+      "title": "Ingested Bytes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 6,
+      "options": {},
+      "targets": [
+        {"expr": "lokiclone_chunks_stored_total", "refId": "A"}
+      ],
+      "title": "Chunks Stored",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "id": 7,
+      "options": {},
+      "targets": [
+        {"expr": "lokiclone_storage_bytes", "refId": "A"}
+      ],
+      "title": "Storage Used (bytes)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "id": 8,
+      "options": {},
+      "targets": [
+        {"expr": "lokiclone_uptime_seconds", "refId": "A"}
+      ],
+      "title": "Server Uptime (s)",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 36,
+  "title": "Insight-Stream Observability",
+  "version": 1
+}
