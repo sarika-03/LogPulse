@@ -105,7 +105,7 @@ curl -X POST http://localhost:8082/ingest \
 
 **Query Logs:**
 ```bash
-curl "http://localhost:8081/query?query={service=\"api\"}&limit=50"
+curl "http://localhost:8082/query?query={service=\"api\"}&limit=50"
 ```
 
 ## ⚙️ Configuration
@@ -121,10 +121,10 @@ The system is configured via YAML files in the `configs/` directory.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOGPULSE_PORT` | 8080 | Server port |
+| `LOGPULSE_PORT` | 8082 | Server port |
 | `LOGPULSE_STORAGE_PATH` | ./data/logs | Storage directory |
 | `LOGPULSE_API_KEY` | (none) | Enable auth |
-| `LOGPULSE_SERVER_URL` | http://localhost:8081 | Agent target URL |
+| `LOGPULSE_SERVER_URL` | http://localhost:8082 | Agent target URL |
 
 ![alt text](image-1.png)
 
@@ -134,7 +134,7 @@ The system is configured via YAML files in the `configs/` directory.
 
 ### Grafana & Prometheus
 A ready-made Grafana dashboard is located at `backend/docker/grafana-dashboard.json`.
-1. Run Prometheus to scrape `http://localhost:8081/prometheus-metrics`.
+1. Run Prometheus to scrape `http://localhost:8082/prometheus-metrics`.
 2. Import the JSON dashboard into Grafana.
 
 ### Kubernetes
