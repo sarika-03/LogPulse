@@ -1,164 +1,317 @@
-# LogPulse - Lightweight Log Aggregation System
+# LogPulse Frontend
 
-LogPulse is a modern, real-time log ingestion and streaming platform designed for high-performance observability. Inspired by Loki, it combines a robust Go backend with a sleek React-based frontend to provide live insights into your system's logs and metrics without the overhead of full-text search indexing.
+Modern React-based web interface for LogPulse log aggregation system.
 
 ## 🚀 Features
 
-- **Label-based Indexing**: Only indexes metadata (like Loki), not the full log content, making it extremely storage-efficient.
-- **Real-Time Streaming**: WebSocket-based live log tailing via the `/stream` endpoint and UI.
-- **High-Performance Ingestion**: Built with Go for handling high throughput with minimal resource usage.
-- **LogQL-style Queries**: Supports a familiar syntax for querying, e.g., `{service="api", env="prod"}`.
-- **Modern UI**: A premium React + TailwindCSS dashboard for visualization and querying.
-- **Log Agent**: Includes a Promtail-like agent for tailing files from distributed systems.
-- **OpenTelemetry Tracing**: Built-in tracing for deep system observability.
-- **Zero Dependencies**: Core system runs with just the Go standard library + Gorilla packages.
+- **Real-time Log Streaming** - WebSocket-based live log tailing
+- **Advanced Query Interface** - LogQL-inspired query language
+- **Analytics Dashboard** - Visualize log patterns and trends
+- **Anomaly Detection** - Automatic detection of unusual patterns
+- **Metrics Monitoring** - Real-time system metrics
+- **Alert Management** - Configure and manage log-based alerts
+- **Dark Mode UI** - Beautiful cyberpunk-inspired interface
 
-## 🏗️ Architecture
+## 📋 Prerequisites
 
-```
-┌─────────────────┐     ┌─────────────────┐
-│   Log Agent     │────▶│   LogPulse      │
-│  (tail files)   │     │    Server       │
-└─────────────────┘     └────────┬────────┘
-                                 │
-                        ┌────────┴────────┐
-                        │                 │
-                   ┌────▼────┐     ┌──────▼──────┐
-                   │  REST   │     │  WebSocket  │
-                   │  /query │     │  /stream    │
-                   └─────────┘     └─────────────┘
-                                          │
-                                   ┌──────▼──────┐
-                                   │  Frontend   │
-                                   │  Dashboard  │
-                                   └─────────────┘
-```
+- Node.js 18+ 
+- npm or yarn
+- Running LogPulse Go backend
 
-## 🛠️ Technology Stack
+## 🛠️ Installation
 
-- **Backend**: Go (Golang), Gorilla Mux, OpenTelemetry
-- **Frontend**: React, TypeScript, Vite, TailwindCSS, Radix UI
-- **Storage**: Custom chunk-based time-series storage
-- **Observation**: Prometheus Metrics, OTel Tracing
-
-## 📦 Quick Start
-
-### 1. Run Server Locally
+### 1. Install Dependencies
 
 ```bash
-cd backend
-go mod download
-go build -o logpulse ./cmd/server
-./logpulse
-```
-Server starts at `http://localhost:8082`.
-
-### 2. Run Frontend Locally
-
-```bash
-# In the project root (or source directory)
 npm install
+# or
+yarn install
+```
+
+### 2. Configure Environment (Optional)
+
+```bash
+cp .env.example .env.local
+# Edit .env.local with your settings
+```
+
+### 3. Start Development Server
+
+```bash
 npm run dev
+# or
+yarn dev
 ```
-Frontend dashboard available at `http://localhost:5173`.
 
-### 3. Run Agent (Optional)
-To tail local log files:
+The app will open at `http://localhost:5173`
+
+## 🔧 Configuration
+
+### Connect to Backend
+
+1. Click the ⚙️ **Settings** icon in the header
+2. Enter your backend URL (e.g., `http://localhost:8080`)
+3. (Optional) Enter API key if authentication is enabled
+4. Click **Test Connection** to verify
+5. Click **Save & Connect**
+
+### Quick Presets
+
+The settings panel includes quick presets for common configurations:
+- **Local (8080)** - Default Go backend port
+- **Local (8081)** - Alternative port
+- **Docker (8082)** - Docker Compose setup
+
+## 📖 Usage
+
+### Query Logs
+
+1. Go to the **Logs** tab
+2. Enter a query using LogQL syntax:
+   ```
+   {service="api-gateway", level="error"}
+   ```
+3. Select time range (5m, 15m, 1h, 6h, 24h)
+4. Click **Run Query**
+
+### Live Streaming
+
+1. Go to the **Live** tab
+2. Click **Start Live Stream**
+3. (Optional) Add filters to limit what you see
+4. Use **Pause** to stop scrolling temporarily
+
+### Test Panel
+
+1. Click **Test Panel** in the top right
+2. Configure service, environment, level, and message
+3. Click **Send Log** to inject a test log
+4. Use bulk send buttons (10, 100, 1K) for load testing
+
+### Save Searches
+
+1. Execute a query
+2. In the saved searches panel, click **+**
+3. Enter a name for your search
+4. Click **Save**
+
+Your saved searches appear in the left sidebar for quick access.
+
+### Analytics
+
+1. Go to the **Analytics** tab
+2. View log volume trends, error rates, and anomalies
+3. Automatic anomaly detection highlights unusual patterns
+4. Adjust time range (15m, 1h, 6h, 24h)
+
+### Metrics
+
+1. Go to the **Metrics** tab
+2. View real-time Prometheus metrics
+3. Auto-refreshes every 5 seconds
+4. Shows ingestion rate, storage, and query performance
+
+### Alerts
+
+1. Go to the **Alerts** tab
+2. Click **New Rule**
+3. Configure:
+   - Name and severity
+   - Query pattern
+   - Threshold and duration
+   - Optional webhook URL
+4. Click **Create Rule**
+
+## 🏗️ Project Structure
+
+```
+src/
+├── components/
+│   ├── AlertConfig.tsx          # Alert rule management
+│   ├── AnalyticsCharts.tsx      # Analytics dashboard
+│   ├── ConnectionStatus.tsx     # Connection indicator
+│   ├── Header.tsx               # Top navigation
+│   ├── LabelsExplorer.tsx       # Label browser
+│   ├── LiveStream.tsx           # WebSocket streaming
+│   ├── LogExport.tsx            # Export functionality
+│   ├── LogViewer.tsx            # Log display
+│   ├── MetricsDashboard.tsx     # Metrics display
+│   ├── QueryBar.tsx             # Query interface
+│   ├── SavedSearches.tsx        # Search management
+│   ├── SettingsPanel.tsx        # Backend configuration
+│   ├── TestPanel.tsx            # Test log injection
+│   └── ui/                      # Reusable UI components
+├── hooks/
+│   ├── useBackendConnection.ts  # Connection management
+│   └── use-mobile.tsx           # Responsive helpers
+├── lib/
+│   ├── api.ts                   # API client
+│   ├── streamClient.ts          # WebSocket client
+│   └── utils.ts                 # Utilities
+├── pages/
+│   ├── Index.tsx                # Main app page
+│   └── NotFound.tsx             # 404 page
+└── types/
+    └── logs.ts                  # TypeScript types
+```
+
+## 🎨 Customization
+
+### Theme
+
+The app uses CSS variables for theming. Edit `src/index.css`:
+
+```css
+:root {
+  --primary: 174 72% 56%;        /* Cyan */
+  --success: 142 72% 45%;        /* Green */
+  --warning: 38 92% 55%;         /* Orange */
+  --destructive: 0 72% 55%;      /* Red */
+}
+```
+
+### Logo
+
+Replace the logo in `src/components/Header.tsx`.
+
+## 🚢 Production Build
 
 ```bash
-go build -o logpulse-agent ./cmd/agent
-./logpulse-agent -config configs/agent-config.yaml
+npm run build
+# or
+yarn build
 ```
 
-### 4. Run with Docker
-The easiest way to stand up the full stack (Server + Agent + Grafana + Prometheus):
+This creates an optimized production build in the `dist/` directory.
+
+### Deploy to Netlify/Vercel
+
+1. Connect your repository
+2. Set build command: `npm run build`
+3. Set publish directory: `dist`
+4. Deploy!
+
+### Deploy with Docker
+
+```dockerfile
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
 
 ```bash
-cd backend/docker
-docker-compose up -d
+docker build -t logpulse-frontend .
+docker run -p 3000:80 logpulse-frontend
 ```
 
-## 🔌 API Endpoints
+## 🐛 Troubleshooting
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check with stats |
-| `/metrics` | GET | Prometheus metrics |
-| `/ingest` | POST | Ingest log streams |
-| `/query` | GET | Query logs |
-| `/labels` | GET | List all label keys |
-| `/stream` | WebSocket | Real-time log streaming |
+### Cannot Connect to Backend
 
-### Usage Examples
+**Problem**: "Connection failed" error in settings
 
-**Ingest Logs:**
+**Solutions**:
+1. Verify backend is running: `curl http://localhost:8080/health`
+2. Check CORS is enabled in backend
+3. Ensure URL format is correct: `http://localhost:8080` (with protocol)
+4. Check browser console for detailed errors
+
+### WebSocket Connection Fails
+
+**Problem**: Live streaming doesn't work
+
+**Solutions**:
+1. Verify WebSocket endpoint: `ws://localhost:8080/stream`
+2. Check firewall isn't blocking WebSocket connections
+3. Ensure backend `/stream` endpoint is implemented
+4. Check browser console for WebSocket errors
+
+### Logs Not Appearing
+
+**Problem**: Query returns 0 results
+
+**Solutions**:
+1. Verify logs exist in backend: `curl 'http://localhost:8080/query?query={}&limit=10'`
+2. Check time range - logs might be outside selected range
+3. Verify query syntax is correct
+4. Use Test Panel to inject test logs
+
+### Metrics Not Loading
+
+**Problem**: Metrics dashboard is empty
+
+**Solutions**:
+1. Verify `/metrics` endpoint exists
+2. Check backend is exposing Prometheus metrics
+3. Ensure backend has processed some logs
+4. Refresh the metrics dashboard
+
+## 📝 Development Tips
+
+### Hot Module Replacement
+
+Vite provides instant HMR. Changes to components reflect immediately without full page reload.
+
+### Debug Mode
+
+Enable debug logging:
+```typescript
+// In src/lib/api.ts
+const DEBUG = true;
+```
+
+### Mock Backend
+
+For frontend development without backend:
+
+```typescript
+// src/lib/api-mock.ts
+export const mockApiClient = {
+  async health() {
+    return { status: 'healthy', ingestionRate: 100, ... };
+  },
+  async query() {
+    return { logs: [...], stats: { ... } };
+  },
+};
+```
+
+### Component Testing
+
 ```bash
-curl -X POST http://localhost:8082/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "streams": [{
-      "labels": { "service": "api", "env": "prod" },
-      "entries": [{ "ts": "2024-01-15T10:30:00Z", "line": "Database connected" }]
-    }]
-  }'
+npm run test
+# or
+yarn test
 ```
 
-**Query Logs:**
-```bash
-curl "http://localhost:8082/query?query={service=\"api\"}&limit=50"
-```
+## 🤝 Contributing
 
-## ⚙️ Configuration
-
-The system is configured via YAML files in the `configs/` directory.
-
-| Component | Config File | Key Settings |
-|-----------|-------------|--------------|
-| **Server** | `config.yaml` | Port, Storage Path, Retention Days, API Keys |
-| **Agent** | `agent-config.yaml` | Target URL, Log File Patterns, Labels |
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOGPULSE_PORT` | 8082 | Server port |
-| `LOGPULSE_STORAGE_PATH` | ./data/logs | Storage directory |
-| `LOGPULSE_API_KEY` | (none) | Enable auth |
-| `LOGPULSE_SERVER_URL` | http://localhost:8082 | Agent target URL |
-
-![alt text](image-1.png)
-
-![alt text](image-2.png)
-
-## 📊 Integrations
-
-### Grafana & Prometheus
-A ready-made Grafana dashboard is located at `backend/docker/grafana-dashboard.json`.
-1. Run Prometheus to scrape `http://localhost:8082/prometheus-metrics`.
-2. Import the JSON dashboard into Grafana.
-
-### Kubernetes
-LogPulse automatically extracts Kubernetes metadata from log labels (`k8s_namespace`, `k8s_pod`, etc.) to generate correlated metrics, allowing detailed filtering in your dashboards.
-
-### SDKs
-Integrate directly into your apps using our SDKs:
-- **Node.js**: `require('./sdk/insight-stream')`
-- **Python**: `from sdk.insight_stream import InsightStream`
-
-## 🔒 Security
-
-- **API Keys**: Configure `auth.api_key` in `config.yaml` for production.
-- **CORS**: Defaults to `*` for dev. Restrict in `backend/internal/api/routes.go` for production.
-- **TLS**: Use a reverse proxy (Nginx/Traefik) for SSL/TLS termination.
-
-## 🤝 Contribution
-
-We welcome contributions!
-1. **Fork & Clone**: `git clone https://github.com/your-username/logpulse.git`
-2. **Branch**: `git checkout -b feature/cool-feature`
-3. **Commit**: Use descriptive messages.
-4. **PR**: Open a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+MIT License - see LICENSE file
+
+## 🙏 Acknowledgments
+
+- Built with React + TypeScript + Vite
+- UI components from shadcn/ui
+- Charts from Recharts
+- Icons from Lucide React
+- Inspired by Grafana and Kibana
+
+---
+
+**Need help?** Check the [main README](../README.md) or open an issue on GitHub.

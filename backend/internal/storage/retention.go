@@ -1,19 +1,28 @@
 package storage
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-// StartRetentionWorker starts a background worker to clean up old logs
-func StartRetentionWorker(basePath string, retentionDays int) {
+// StartRetentionWorker starts a background worker to clean up old logs with context support
+func StartRetentionWorker(ctx context.Context, basePath string, retentionDays int) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		CleanupOldChunks(basePath, retentionDays)
+	log.Printf("[RetentionWorker] Starting with %d days retention", retentionDays)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[RetentionWorker] Shutting down")
+			return
+		case <-ticker.C:
+			CleanupOldChunks(basePath, retentionDays)
+		}
 	}
 }
 
@@ -23,9 +32,11 @@ func CleanupOldChunks(basePath string, retentionDays int) {
 	deletedCount := 0
 	deletedBytes := int64(0)
 
+	log.Printf("[RetentionWorker] Starting cleanup, cutoff: %s", cutoff.Format(time.RFC3339))
+
 	err := filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil // Continue walking on error
 		}
 
 		// Skip directories
@@ -37,29 +48,34 @@ func CleanupOldChunks(basePath string, retentionDays int) {
 		if info.ModTime().Before(cutoff) {
 			size := info.Size()
 			if err := os.Remove(path); err != nil {
-				log.Printf("Failed to delete %s: %v", path, err)
+				log.Printf("[RetentionWorker] Failed to delete %s: %v", path, err)
 				return nil
 			}
 			deletedCount++
 			deletedBytes += size
+			log.Printf("[RetentionWorker] Deleted old file: %s (age: %v)", 
+				filepath.Base(path), time.Since(info.ModTime()).Hours()/24)
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		log.Printf("Retention cleanup error: %v", err)
+		log.Printf("[RetentionWorker] Cleanup error: %v", err)
 	}
 
 	if deletedCount > 0 {
-		log.Printf("Retention cleanup: deleted %d files (%d bytes)", deletedCount, deletedBytes)
+		log.Printf("[RetentionWorker] Cleanup complete: deleted %d files (%.2f MB)", 
+			deletedCount, float64(deletedBytes)/1024/1024)
+	} else {
+		log.Printf("[RetentionWorker] Cleanup complete: no old files to delete")
 	}
 
 	// Remove empty directories
 	cleanupEmptyDirs(basePath)
 }
 
-// cleanupEmptyDirs removes empty directories
+// cleanupEmptyDirs removes empty directories recursively
 func cleanupEmptyDirs(basePath string) {
 	filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() || path == basePath {
@@ -72,9 +88,13 @@ func cleanupEmptyDirs(basePath string) {
 		}
 
 		if len(entries) == 0 {
-			os.Remove(path)
+			if err := os.Remove(path); err == nil {
+				log.Printf("[RetentionWorker] Removed empty directory: %s", path)
+			}
 		}
 
 		return nil
 	})
 }
+
+

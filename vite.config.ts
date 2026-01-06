@@ -10,32 +10,32 @@ export default defineConfig(({ mode }) => ({
     strictPort: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },
       '/health': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
       '/query': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
       '/ingest': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
       '/labels': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
       '/metrics': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8082',
         changeOrigin: true,
       },
       '/stream': {
-        target: 'ws://localhost:8081',
+        target: 'ws://localhost:8082',
         changeOrigin: true,
         ws: true,
       },

@@ -1,5 +1,5 @@
 server:
-  url: "http://logpulse:8080"
+  url: "http://localhost:8082"
   api_key: ""  # Optional, set via LOGILITE_API_KEY env var
 
 positions_file: "./positions.json"

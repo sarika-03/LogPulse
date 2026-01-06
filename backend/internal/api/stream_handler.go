@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -29,9 +30,10 @@ type StreamHub struct {
 	unregister   chan *websocket.Conn
 	broadcast    chan *models.LogEntry
 	mu           sync.RWMutex
-	dropCount    int64 // Track dropped messages
+	dropCount    int64
 	broadcastErr chan error
-	doneChan     chan struct{}
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 type clientRegistration struct {
@@ -45,22 +47,24 @@ type StreamFilter struct {
 
 // NewStreamHub creates a new streaming hub
 func NewStreamHub() *StreamHub {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &StreamHub{
 		clients:      make(map[*websocket.Conn]StreamFilter),
 		register:     make(chan *clientRegistration, 100),
 		unregister:   make(chan *websocket.Conn, 100),
-		broadcast:    make(chan *models.LogEntry, 5000), // Increased buffer
+		broadcast:    make(chan *models.LogEntry, 5000),
 		dropCount:    0,
 		broadcastErr: make(chan error, 100),
-		doneChan:     make(chan struct{}),
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
-// Run starts the hub's main loop
-func (h *StreamHub) Run() {
+// Run starts the hub's main loop with context support
+func (h *StreamHub) Run(ctx context.Context) {
 	log.Println("[StreamHub] Starting hub")
 	defer func() {
-		close(h.doneChan)
+		h.cancel() // Cancel internal context
 		log.Println("[StreamHub] Hub stopped")
 	}()
 
@@ -69,6 +73,11 @@ func (h *StreamHub) Run() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			log.Println("[StreamHub] Context cancelled, shutting down")
+			h.closeAllClients()
+			return
+
 		case reg := <-h.register:
 			h.mu.Lock()
 			h.clients[reg.conn] = reg.filter
@@ -82,78 +91,101 @@ func (h *StreamHub) Run() {
 				delete(h.clients, conn)
 				clientCount := len(h.clients)
 				h.mu.Unlock()
-				log.Printf("[StreamHub] Client disconnected. Total: %d", clientCount)
 				conn.Close()
+				log.Printf("[StreamHub] Client disconnected. Total: %d", clientCount)
 			} else {
 				h.mu.Unlock()
 			}
 
 		case entry := <-h.broadcast:
-			// Process broadcast with separate lock for reading clients
-			h.mu.RLock()
-			clientCount := len(h.clients)
-			clientsCopy := make([](*websocket.Conn), 0, clientCount)
-			filtersCopy := make([]StreamFilter, 0, clientCount)
-			
-			for conn, filter := range h.clients {
-				clientsCopy = append(clientsCopy, conn)
-				filtersCopy = append(filtersCopy, filter)
-			}
-			h.mu.RUnlock()
-
-			// Send to matching clients
-			failedConns := make([]*websocket.Conn, 0)
-			for i, conn := range clientsCopy {
-				filter := filtersCopy[i]
-				
-				// Check if log matches client's filter
-				if matchesFilter(entry.Labels, filter.Labels) {
-					msg, _ := json.Marshal(map[string]interface{}{
-						"type": "log",
-						"data": map[string]interface{}{
-							"id":        entry.ID,
-							"timestamp": entry.Timestamp.Format(time.RFC3339Nano),
-							"message":   entry.Line,
-							"labels":    entry.Labels,
-							"level":     entry.Labels["level"],
-						},
-					})
-
-					// Non-blocking write with timeout
-					done := make(chan error, 1)
-					go func(c *websocket.Conn, m []byte) {
-						c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-						done <- c.WriteMessage(websocket.TextMessage, m)
-					}(conn, msg)
-
-					select {
-					case err := <-done:
-						if err != nil {
-							log.Printf("[StreamHub] Failed to write to client: %v", err)
-							failedConns = append(failedConns, conn)
-						}
-					case <-time.After(6 * time.Second):
-						log.Printf("[StreamHub] Client write timeout")
-						failedConns = append(failedConns, conn)
-					}
-				}
-			}
-
-			// Unregister failed connections
-			for _, conn := range failedConns {
-				h.unregister <- conn
-			}
+			h.processBroadcast(entry)
 
 		case <-ticker.C:
-			drops := atomic.LoadInt64(&h.dropCount)
-			h.mu.RLock()
-			clientCount := len(h.clients)
-			h.mu.RUnlock()
-			if clientCount > 0 || drops > 0 {
-				log.Printf("[StreamHub] Status - Clients: %d, Drops: %d, QueueLen: %d/%d",
-					clientCount, drops, len(h.broadcast), cap(h.broadcast))
-			}
+			h.logStatus()
 		}
+	}
+}
+
+// processBroadcast sends log entry to matching clients
+func (h *StreamHub) processBroadcast(entry *models.LogEntry) {
+	h.mu.RLock()
+	clientCount := len(h.clients)
+	clientsCopy := make([]*websocket.Conn, 0, clientCount)
+	filtersCopy := make([]StreamFilter, 0, clientCount)
+
+	for conn, filter := range h.clients {
+		clientsCopy = append(clientsCopy, conn)
+		filtersCopy = append(filtersCopy, filter)
+	}
+	h.mu.RUnlock()
+
+	failedConns := make([]*websocket.Conn, 0)
+
+	for i, conn := range clientsCopy {
+		filter := filtersCopy[i]
+
+		if !matchesFilter(entry.Labels, filter.Labels) {
+			continue
+		}
+
+		msg, _ := json.Marshal(map[string]interface{}{
+			"type": "log",
+			"data": map[string]interface{}{
+				"id":        entry.ID,
+				"timestamp": entry.Timestamp.Format(time.RFC3339Nano),
+				"message":   entry.Line,
+				"labels":    entry.Labels,
+				"level":     entry.Labels["level"],
+			},
+		})
+
+		// Non-blocking write with timeout
+		done := make(chan error, 1)
+		go func(c *websocket.Conn, m []byte) {
+			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			done <- c.WriteMessage(websocket.TextMessage, m)
+		}(conn, msg)
+
+		select {
+		case err := <-done:
+			if err != nil {
+				log.Printf("[StreamHub] Write error: %v", err)
+				failedConns = append(failedConns, conn)
+			}
+		case <-time.After(6 * time.Second):
+			log.Printf("[StreamHub] Write timeout")
+			failedConns = append(failedConns, conn)
+		}
+	}
+
+	// Unregister failed connections
+	for _, conn := range failedConns {
+		h.unregister <- conn
+	}
+}
+
+// closeAllClients closes all connected clients
+func (h *StreamHub) closeAllClients() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for conn := range h.clients {
+		conn.Close()
+	}
+	h.clients = make(map[*websocket.Conn]StreamFilter)
+	log.Printf("[StreamHub] All clients disconnected")
+}
+
+// logStatus logs current hub status
+func (h *StreamHub) logStatus() {
+	drops := atomic.LoadInt64(&h.dropCount)
+	h.mu.RLock()
+	clientCount := len(h.clients)
+	h.mu.RUnlock()
+
+	if clientCount > 0 || drops > 0 {
+		log.Printf("[StreamHub] Status - Clients: %d, Drops: %d, QueueLen: %d/%d",
+			clientCount, drops, len(h.broadcast), cap(h.broadcast))
 	}
 }
 
@@ -165,7 +197,7 @@ func (h *StreamHub) Broadcast(entry *models.LogEntry) {
 	default:
 		// Channel full, drop message and track
 		drops := atomic.AddInt64(&h.dropCount, 1)
-		if drops%100 == 0 { // Log every 100 drops to avoid spam
+		if drops%100 == 0 {
 			log.Printf("[StreamHub] WARN: Broadcast channel full, dropping message. Total drops: %d", drops)
 		}
 	}
@@ -174,7 +206,7 @@ func (h *StreamHub) Broadcast(entry *models.LogEntry) {
 // matchesFilter checks if log labels match the filter
 func matchesFilter(logLabels, filterLabels map[string]string) bool {
 	if len(filterLabels) == 0 {
-		return true // No filter means match all
+		return true
 	}
 	for k, v := range filterLabels {
 		if logLabels[k] != v {
@@ -187,67 +219,6 @@ func matchesFilter(logLabels, filterLabels map[string]string) bool {
 // StreamHandler handles WebSocket connections for live log streaming
 type StreamHandler struct {
 	hub *StreamHub
-}
-
-// ServeMetricsSSE handles /metrics/stream SSE endpoint for real-time Prometheus metrics
-func ServeMetricsSSE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-ticker.C:
-			// Capture Prometheus metrics as text
-			w.Write([]byte("event: metrics\n"))
-			w.Write([]byte("data: "))
-			promhttp.Handler().ServeHTTP(&sseWriter{w}, r)
-			w.Write([]byte("\n\n"))
-			flusher.Flush()
-		}
-	}
-}
-
-// sseWriter wraps http.ResponseWriter to capture promhttp output as SSE data
-type sseWriter struct {
-	http.ResponseWriter
-}
-
-func (w *sseWriter) Write(p []byte) (int, error) {
-	// Replace newlines with \ndata:  for SSE compliance
-	s := string(p)
-	s = s[:len(s)-1] // Remove last newline
-	lines := []byte("")
-	for _, line := range splitLines(s) {
-		lines = append(lines, []byte("\ndata: "+line)...)
-	}
-	return w.ResponseWriter.Write(lines)
-}
-
-func splitLines(s string) []string {
-       var lines []string
-       start := 0
-       for i := 0; i < len(s); i++ {
-	       if s[i] == '\n' {
-		       lines = append(lines, s[start:i])
-		       start = i + 1
-	       }
-       }
-       if start < len(s) {
-	       lines = append(lines, s[start:])
-       }
-       return lines
 }
 
 // NewStreamHandler creates a new stream handler
@@ -263,25 +234,21 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse filter from query params
 	filter := StreamFilter{
 		Labels: make(map[string]string),
 	}
 
-	// Get labels from query string
 	for key, values := range r.URL.Query() {
 		if key != "query" && len(values) > 0 {
 			filter.Labels[key] = values[0]
 		}
 	}
 
-	// Register client
 	h.hub.register <- &clientRegistration{
 		conn:   conn,
 		filter: filter,
 	}
 
-	// Send welcome message
 	welcome, _ := json.Marshal(map[string]interface{}{
 		"type":    "connected",
 		"message": "Connected to log stream",
@@ -289,15 +256,12 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
 	})
 	conn.WriteMessage(websocket.TextMessage, welcome)
 
-	// Context for goroutine
 	done := make(chan struct{})
 
-	// Handle incoming messages (for filter updates)
 	go func() {
 		defer close(done)
 		defer func() {
 			h.hub.unregister <- conn
-			log.Printf("[StreamHandler] Reader goroutine exited for client with filter %v", filter.Labels)
 		}()
 
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -315,10 +279,8 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Handle filter update messages
 			var msg map[string]interface{}
 			if err := json.Unmarshal(message, &msg); err != nil {
-				log.Printf("[StreamHandler] Failed to unmarshal message: %v", err)
 				continue
 			}
 
@@ -334,22 +296,18 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
 					h.hub.clients[conn] = newFilter
 					h.hub.mu.Unlock()
 
-					// Confirm filter update
 					confirm, _ := json.Marshal(map[string]interface{}{
 						"type":   "filter_updated",
 						"filter": newFilter.Labels,
 					})
 					conn.WriteMessage(websocket.TextMessage, confirm)
-					log.Printf("[StreamHandler] Filter updated: %v", newFilter.Labels)
 				}
 			}
 
-			// Reset read deadline on successful message
 			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		}
 	}()
 
-	// Keep the connection alive with periodic pings
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -359,7 +317,6 @@ func (h *StreamHandler) HandleStream(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-				log.Printf("[StreamHandler] Ping error: %v", err)
 				h.hub.unregister <- conn
 				return
 			}
@@ -383,3 +340,63 @@ func (h *StreamHub) GetDroppedMessages() int64 {
 func (h *StreamHub) ResetDropCounter() {
 	atomic.StoreInt64(&h.dropCount, 0)
 }
+
+// ServeMetricsSSE handles /metrics/stream SSE endpoint
+func ServeMetricsSSE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			w.Write([]byte("event: metrics\n"))
+			w.Write([]byte("data: "))
+			promhttp.Handler().ServeHTTP(&sseWriter{w}, r)
+			w.Write([]byte("\n\n"))
+			flusher.Flush()
+		}
+	}
+}
+
+// sseWriter wraps http.ResponseWriter for SSE
+type sseWriter struct {
+	http.ResponseWriter
+}
+
+func (w *sseWriter) Write(p []byte) (int, error) {
+	s := string(p)
+	s = s[:len(s)-1]
+	lines := []byte("")
+	for _, line := range splitLines(s) {
+		lines = append(lines, []byte("\ndata: "+line)...)
+	}
+	return w.ResponseWriter.Write(lines)
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
+

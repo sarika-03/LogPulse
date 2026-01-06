@@ -5,8 +5,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    container_name: logpulse-server
     ports:
-      - "8082:8080"
+      - "8080:8080"
     volumes:
       - ../configs:/app/configs
       - logpulse-data:/app/data
@@ -16,10 +17,11 @@ services:
       - LOGPULSE_STORAGE_PATH=/app/data/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 10s
     networks:
       - logpulse-net
 
@@ -27,42 +29,71 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.agent
+    container_name: logpulse-agent
     volumes:
-      - /var/log:/var/log:ro  # Mount host logs as read-only
+      - /var/log:/var/log:ro
       - agent-positions:/app/positions
+      - ../configs/agent-config.yaml:/app/agent-config.yaml:ro
     environment:
       - LOGPULSE_SERVER_URL=http://logpulse:8080
     depends_on:
-      - logpulse
+      logpulse:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - logpulse-net
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.48.0
+    container_name: logpulse-prometheus
     ports:
       - "9090:9090"
     volumes:
       - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
     networks:
       - logpulse-net
     depends_on:
       - logpulse
 
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: logpulse-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ../alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    networks:
+      - logpulse-net
+    depends_on:
+      - prometheus
+
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.2.2
+    container_name: logpulse-grafana
     ports:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ../docker/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/logpulse.json:ro
     environment:
+      - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    restart: unless-stopped
     networks:
       - logpulse-net
     depends_on:
@@ -70,10 +101,19 @@ services:
 
 volumes:
   logpulse-data:
+    driver: local
   agent-positions:
+    driver: local
   prometheus-data:
+    driver: local
+  alertmanager-data:
+    driver: local
   grafana-data:
+    driver: local
 
 networks:
   logpulse-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

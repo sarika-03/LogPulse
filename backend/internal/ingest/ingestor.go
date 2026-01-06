@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"context"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -27,10 +28,15 @@ type Ingestor struct {
 	buffers  map[string]*logBuffer
 	bufferMu sync.Mutex
 
+	// Broadcast queue with bounded goroutines
+	broadcastQueue chan models.LogEntry
+	numBroadcasters int
+
 	// Metrics
 	ingestedLines int64
 	ingestedBytes int64
 	broadcastedLines int64
+	droppedBroadcasts int64
 	metricsMu     sync.RWMutex
 
 	// Kubernetes context
@@ -41,13 +47,6 @@ type Ingestor struct {
 	wg       sync.WaitGroup
 }
 
-	// GetK8sContext returns Kubernetes labels and annotations
-	func (ing *Ingestor) GetK8sContext() (map[string]string, map[string]string) {
-		ing.metricsMu.RLock()
-		defer ing.metricsMu.RUnlock()
-		return ing.k8sLabels, ing.k8sAnnotations
-	}
-
 type logBuffer struct {
 	labels  map[string]string
 	entries []models.LogEntry
@@ -57,21 +56,29 @@ type logBuffer struct {
 // NewIngestor creates a new log ingestor
 func NewIngestor(idx *index.Index, writer *storage.Writer, bufferSize int, broadcaster StreamBroadcaster) *Ingestor {
 	return &Ingestor{
-		index:       idx,
-		writer:      writer,
-		broadcaster: broadcaster,
-		bufSize:     bufferSize,
-		buffers:     make(map[string]*logBuffer),
-		k8sLabels:      make(map[string]string),
-		k8sAnnotations: make(map[string]string),
-		stopChan:    make(chan struct{}),
+		index:           idx,
+		writer:          writer,
+		broadcaster:     broadcaster,
+		bufSize:         bufferSize,
+		buffers:         make(map[string]*logBuffer),
+		broadcastQueue:  make(chan models.LogEntry, bufferSize*2), // Bounded queue
+		numBroadcasters: 4, // Tunable: number of broadcast workers
+		k8sLabels:       make(map[string]string),
+		k8sAnnotations:  make(map[string]string),
+		stopChan:        make(chan struct{}),
 	}
 }
 
-// Start begins the background flush worker
+// Start begins the background flush and broadcast workers
 func (ing *Ingestor) Start() {
 	ing.wg.Add(1)
 	go ing.flushWorker()
+
+	// Start broadcast workers with proper cleanup
+	for i := 0; i < ing.numBroadcasters; i++ {
+		ing.wg.Add(1)
+		go ing.broadcastWorker()
+	}
 }
 
 // Stop gracefully shuts down the ingestor
@@ -79,9 +86,16 @@ func (ing *Ingestor) Stop() {
 	close(ing.stopChan)
 	ing.wg.Wait()
 	ing.flushAll()
+	close(ing.broadcastQueue) // Signal broadcast workers to exit
 }
 
-// Ingest processes incoming log streams
+// GetK8sContext returns Kubernetes labels and annotations
+func (ing *Ingestor) GetK8sContext() (map[string]string, map[string]string) {
+	ing.metricsMu.RLock()
+	defer ing.metricsMu.RUnlock()
+	return ing.k8sLabels, ing.k8sAnnotations
+}
+
 // ExtractK8sContext extracts Kubernetes labels/annotations from log labels
 func ExtractK8sContext(labels map[string]string) (map[string]string, map[string]string) {
 	k8sLabels := make(map[string]string)
@@ -97,6 +111,7 @@ func ExtractK8sContext(labels map[string]string) (map[string]string, map[string]
 	return k8sLabels, k8sAnnotations
 }
 
+// Ingest processes incoming log streams
 func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 	accepted := 0
 
@@ -143,17 +158,10 @@ func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 			buf.size += len(entry.Line)
 			accepted++
 
-			// Broadcast to live stream subscribers (non-blocking)
-			if ing.broadcaster != nil {
-				// Use non-blocking broadcast to avoid deadlocking ingest pipeline
-				go func(entry *models.LogEntry) {
-					ing.broadcaster.Broadcast(entry)
-					atomic.AddInt64(&ing.broadcastedLines, 1)
-				}(&logEntry)
-				
-				log.Printf("[Ingestor] Broadcast log entry: ID=%s, Labels=%v, Message=%.50s", 
-					logEntry.ID, stream.Labels, logEntry.Line)
-			}
+			accepted++
+
+			// Queue broadcast instead of spawning goroutine
+			ing.enqueueBroadcast(logEntry)
 
 			// Update metrics
 			ing.metricsMu.Lock()
@@ -173,10 +181,36 @@ func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 		ing.bufferMu.Unlock()
 	}
 
-	log.Printf("[Ingestor] Ingest request processed: accepted=%d, totalLines=%d", 
-		accepted, atomic.LoadInt64(&ing.ingestedLines))
+	log.Printf("[Ingestor] Ingest request processed: accepted=%d, totalLines=%d, queueDepth=%d",
+		accepted, atomic.LoadInt64(&ing.ingestedLines), len(ing.broadcastQueue))
 
 	return accepted, nil
+}
+
+// enqueueBroadcast attempts to queue a log entry for broadcast
+func (ing *Ingestor) enqueueBroadcast(entry models.LogEntry) {
+	select {
+	case ing.broadcastQueue <- entry:
+		atomic.AddInt64(&ing.broadcastedLines, 1)
+	default:
+		// Queue full - drop with tracking
+		atomic.AddInt64(&ing.droppedBroadcasts, 1)
+		drops := atomic.LoadInt64(&ing.droppedBroadcasts)
+		if drops%100 == 0 {
+			log.Printf("[Ingestor] WARNING: Broadcast queue full, dropping messages. Total drops: %d", drops)
+		}
+	}
+}
+
+// broadcastWorker processes entries from the broadcast queue
+func (ing *Ingestor) broadcastWorker() {
+	defer ing.wg.Done()
+	for entry := range ing.broadcastQueue {
+		if ing.broadcaster != nil {
+			ing.broadcaster.Broadcast(&entry)
+		}
+	}
+	log.Printf("[Ingestor] Broadcast worker exiting")
 }
 
 // flushWorker periodically flushes buffers
@@ -235,7 +269,15 @@ func (ing *Ingestor) GetMetrics() (lines int64, bytes int64, broadcasts int64) {
 	return ing.ingestedLines, ing.ingestedBytes, atomic.LoadInt64(&ing.broadcastedLines)
 }
 
+// GetDroppedBroadcasts returns the count of dropped broadcasts
+func (ing *Ingestor) GetDroppedBroadcasts() int64 {
+	return atomic.LoadInt64(&ing.droppedBroadcasts)
+}
+
+var logIDCounter int64
+
 // generateLogID creates a unique log ID
 func generateLogID() string {
-	return time.Now().Format("20060102150405.000000000")
+	counter := atomic.AddInt64(&logIDCounter, 1)
+	return time.Now().Format("20060102150405.000000000") + "_" + string(rune(counter))
 }
