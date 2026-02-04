@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"context"
 	"log"
 	"sync"
 	"sync/atomic"
