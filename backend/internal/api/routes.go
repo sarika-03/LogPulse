@@ -2,13 +2,15 @@ package api
 
 import (
 	"net/http"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/logpulse/backend/internal/config"
 	"github.com/logpulse/backend/internal/index"
 	"github.com/logpulse/backend/internal/ingest"
 	"github.com/logpulse/backend/internal/plugin"
+	"github.com/logpulse/backend/internal/ratelimiter"
 	"github.com/logpulse/backend/internal/storage"
 )
 
@@ -28,8 +30,8 @@ func NewRouterWithWebhooks(
 	if webhookNotifier != nil {
 		ingestHandler = NewIngestHandler(ingestor, webhookNotifier.(*plugin.WebhookNotifier))
 	} else {
-		       ingestHandler = NewIngestHandler(ingestor, nil)
-	       }
+		ingestHandler = NewIngestHandler(ingestor, nil)
+	}
 	queryHandler := NewQueryHandler(labelIndex, reader)
 	streamHandler := NewStreamHandler(streamHub)
 	lokiHandler := NewLokiHandler(labelIndex, reader)
@@ -39,7 +41,7 @@ func NewRouterWithWebhooks(
 	router.Use(loggingMiddleware)
 
 	if cfg.Auth.Enabled {
-		 router.Use(authMiddleware(cfg.Auth.APIKey))
+		router.Use(authMiddleware(cfg.Auth.APIKey))
 	}
 
 	router.HandleFunc("/health", healthHandler.Health).Methods("GET", "OPTIONS")
@@ -47,7 +49,8 @@ func NewRouterWithWebhooks(
 	router.Handle("/prometheus-metrics", promhttp.Handler()).Methods("GET")
 	router.HandleFunc("/metrics/stream", ServeMetricsSSE).Methods("GET")
 
-	router.HandleFunc("/ingest", ingestHandler.Ingest).Methods("POST", "OPTIONS")
+	// Apply rate limiting to /ingest endpoint
+	router.Handle("/ingest", ratelimiter.Middleware(&cfg.RateLimit)(http.HandlerFunc(ingestHandler.Ingest))).Methods("POST", "OPTIONS")
 
 	router.HandleFunc("/query", queryHandler.Query).Methods("GET", "OPTIONS")
 	router.HandleFunc("/labels", queryHandler.Labels).Methods("GET", "OPTIONS")
@@ -55,7 +58,6 @@ func NewRouterWithWebhooks(
 
 	// WebSocket for live tailing
 	router.HandleFunc("/stream", streamHandler.HandleStream).Methods("GET")
-
 
 	router.HandleFunc("/alerts", alertHandler.GetAlerts).Methods("GET", "OPTIONS")
 	router.HandleFunc("/alerts", alertHandler.CreateAlert).Methods("POST", "OPTIONS")
@@ -134,4 +136,3 @@ func authMiddleware(apiKey string) mux.MiddlewareFunc {
 		})
 	}
 }
-
