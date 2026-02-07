@@ -155,10 +155,19 @@ func main() {
 
 		log.Println("Graceful shutdown initiated...")
 		
-		// Signal all goroutines to stop
-		rootCancel()
+		// Step 1: Shutdown HTTP server first to stop accepting new requests
+		// This allows in-flight requests to complete naturally
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
 		
-		// Wait for ingestor to flush remaining logs (with timeout)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Server shutdown error: %v", err)
+		} else {
+			log.Println("HTTP server stopped gracefully")
+		}
+		
+		// Step 2: Stop ingestor and flush remaining logs (with timeout)
+		// All in-flight HTTP requests should have completed by now
 		flushDone := make(chan struct{})
 		go func() {
 			ingestor.Stop()
@@ -172,13 +181,8 @@ func main() {
 			log.Println("WARNING: Ingestor flush timeout")
 		}
 		
-		// Shutdown HTTP server with timeout
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer shutdownCancel()
-		
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Server shutdown error: %v", err)
-		}
+		// Step 3: Signal all remaining goroutines to stop
+		rootCancel()
 		
 		close(shutdownComplete)
 	}()
