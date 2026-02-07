@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,18 +17,24 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string `yaml:"port"`
+	Port         string `yaml:"port"`
+	ReadTimeout  string `yaml:"read_timeout"`
+	WriteTimeout string `yaml:"write_timeout"`
+	IdleTimeout  string `yaml:"idle_timeout"`
 }
 
 type StorageConfig struct {
-	Path           string `yaml:"path"`
-	ChunkSizeBytes int    `yaml:"chunk_size_bytes"`
-	RetentionDays  int    `yaml:"retention_days"`
+	Path               string `yaml:"path"`
+	ChunkSizeBytes     int    `yaml:"chunk_size_bytes"`
+	RetentionDays      int    `yaml:"retention_days"`
+	CompressionEnabled bool   `yaml:"compression_enabled"`
 }
 
 type IngestConfig struct {
 	BufferSize    int `yaml:"buffer_size"`
 	FlushInterval int `yaml:"flush_interval_ms"`
+	MaxBatchSize  int `yaml:"max_batch_size"`
+	Workers       int `yaml:"workers"`
 }
 
 type AuthConfig struct {
@@ -36,12 +43,12 @@ type AuthConfig struct {
 }
 
 type RateLimitConfig struct {
-	Enabled      bool     `yaml:"enabled"`
-	RequestsPer  int      `yaml:"requests_per_minute"`
-	Burst        int      `yaml:"burst"`
-	IngestOnly   bool     `yaml:"ingest_only"`
-	WhitelistIPs []string `yaml:"whitelist_ips"`
-	BlacklistIPs []string `yaml:"blacklist_ips"`
+	Enabled           bool     `yaml:"enabled"`
+	RequestsPerMinute int      `yaml:"requests_per_minute"`
+	Burst             int      `yaml:"burst"`
+	WhitelistIPs      []string `yaml:"whitelist_ips"`
+	BlacklistIPs      []string `yaml:"blacklist_ips"`
+	TrustedProxies    []string `yaml:"trusted_proxies"` // IPs of reverse proxies we trust
 }
 
 func Load(path string) (*Config, error) {
@@ -57,28 +64,39 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Override with environment variables
-	if port := os.Getenv("LOKILITE_PORT"); port != "" {
+	if port := os.Getenv("LOGPULSE_PORT"); port != "" {
 		cfg.Server.Port = port
 	}
-	if apiKey := os.Getenv("LOKILITE_API_KEY"); apiKey != "" {
+	if apiKey := os.Getenv("LOGPULSE_API_KEY"); apiKey != "" {
 		cfg.Auth.APIKey = apiKey
 		cfg.Auth.Enabled = true
 	}
-	if storagePath := os.Getenv("LOKILITE_STORAGE_PATH"); storagePath != "" {
+	if storagePath := os.Getenv("LOGPULSE_STORAGE_PATH"); storagePath != "" {
 		cfg.Storage.Path = storagePath
 	}
-	if rateLimitEnabled := os.Getenv("LOGPULSE_RATE_LIMIT_ENABLED"); rateLimitEnabled != "" {
-		cfg.RateLimit.Enabled = rateLimitEnabled == "true"
+
+	// Rate limit environment variable overrides
+	if enabled := os.Getenv("LOGPULSE_RATE_LIMIT_ENABLED"); enabled != "" {
+		cfg.RateLimit.Enabled = enabled == "true"
 	}
-	if rateLimitRequestsPerMinute := os.Getenv("LOGPULSE_RATE_LIMIT_REQUESTS_PER_MINUTE"); rateLimitRequestsPerMinute != "" {
-		if val, err := strconv.Atoi(rateLimitRequestsPerMinute); err == nil {
-			cfg.RateLimit.RequestsPer = val
+	if rpm := os.Getenv("LOGPULSE_RATE_LIMIT_RPM"); rpm != "" {
+		if val, err := strconv.Atoi(rpm); err == nil {
+			cfg.RateLimit.RequestsPerMinute = val
 		}
 	}
-	if rateLimitBurst := os.Getenv("LOGPULSE_RATE_LIMIT_BURST"); rateLimitBurst != "" {
-		if val, err := strconv.Atoi(rateLimitBurst); err == nil {
+	if burst := os.Getenv("LOGPULSE_RATE_LIMIT_BURST"); burst != "" {
+		if val, err := strconv.Atoi(burst); err == nil {
 			cfg.RateLimit.Burst = val
 		}
+	}
+	if whitelist := os.Getenv("LOGPULSE_RATE_LIMIT_WHITELIST"); whitelist != "" {
+		cfg.RateLimit.WhitelistIPs = strings.Split(whitelist, ",")
+	}
+	if blacklist := os.Getenv("LOGPULSE_RATE_LIMIT_BLACKLIST"); blacklist != "" {
+		cfg.RateLimit.BlacklistIPs = strings.Split(blacklist, ",")
+	}
+	if proxies := os.Getenv("LOGPULSE_RATE_LIMIT_TRUSTED_PROXIES"); proxies != "" {
+		cfg.RateLimit.TrustedProxies = strings.Split(proxies, ",")
 	}
 
 	return &cfg, nil
@@ -103,12 +121,12 @@ func DefaultConfig() *Config {
 			APIKey:  "",
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:      true,
-			RequestsPer:  1000,
-			Burst:        100,
-			IngestOnly:   false, // Apply to all endpoints by default
-			WhitelistIPs: []string{},
-			BlacklistIPs: []string{},
+			Enabled:           true,
+			RequestsPerMinute: 1000,
+			Burst:             100,
+			WhitelistIPs:      []string{},
+			BlacklistIPs:      []string{},
+			TrustedProxies:    []string{},
 		},
 	}
 }

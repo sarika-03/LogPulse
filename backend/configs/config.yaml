@@ -26,6 +26,7 @@ rate_limit:
   burst: 100                  
   whitelist_ips: []
   blacklist_ips: []
+  trusted_proxies: []
 
 streaming:
   enabled: true
