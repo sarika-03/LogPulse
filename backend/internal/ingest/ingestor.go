@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"context"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -29,15 +28,15 @@ type Ingestor struct {
 	bufferMu sync.Mutex
 
 	// Broadcast queue with bounded goroutines
-	broadcastQueue chan models.LogEntry
+	broadcastQueue  chan models.LogEntry
 	numBroadcasters int
 
 	// Metrics
-	ingestedLines int64
-	ingestedBytes int64
-	broadcastedLines int64
+	ingestedLines     int64
+	ingestedBytes     int64
+	broadcastedLines  int64
 	droppedBroadcasts int64
-	metricsMu     sync.RWMutex
+	metricsMu         sync.RWMutex
 
 	// Kubernetes context
 	k8sLabels      map[string]string
@@ -62,7 +61,7 @@ func NewIngestor(idx *index.Index, writer *storage.Writer, bufferSize int, broad
 		bufSize:         bufferSize,
 		buffers:         make(map[string]*logBuffer),
 		broadcastQueue:  make(chan models.LogEntry, bufferSize*2), // Bounded queue
-		numBroadcasters: 4, // Tunable: number of broadcast workers
+		numBroadcasters: 4,                                        // Tunable: number of broadcast workers
 		k8sLabels:       make(map[string]string),
 		k8sAnnotations:  make(map[string]string),
 		stopChan:        make(chan struct{}),
