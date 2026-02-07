@@ -20,6 +20,14 @@ auth:
   enabled: false
   api_key: ""  # Set via LOGPULSE_API_KEY env var
 
+rate_limit:
+  enabled: true
+  requests_per_minute: 1000    
+  burst: 100                  
+  whitelist_ips: []
+  blacklist_ips: []
+  trusted_proxies: []
+
 streaming:
   enabled: true
   max_clients: 1000
