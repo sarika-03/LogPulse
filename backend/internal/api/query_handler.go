@@ -34,7 +34,7 @@ func (h *QueryHandler) Query(w http.ResponseWriter, r *http.Request) {
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
 	limitStr := r.URL.Query().Get("limit")
-
+	offsetStr := r.URL.Query().Get("offset")
 	// Parse time range
 	var startTime, endTime time.Time
 	var err error
@@ -67,6 +67,13 @@ func (h *QueryHandler) Query(w http.ResponseWriter, r *http.Request) {
 			limit = 100
 		}
 	}
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			offset = 0
+		}
+	}
 
 	// Execute query
 	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
@@ -75,9 +82,21 @@ func (h *QueryHandler) Query(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply pagination slicing to logs
+	if offset < len(result.Logs) {
+		end := offset + limit
+		if end > len(result.Logs) {
+			end = len(result.Logs)
+		}
+		result.Logs = result.Logs[offset:end]
+	} else {
+		result.Logs = []query.LogResponse{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
 
 // Labels handles GET /labels
 func (h *QueryHandler) Labels(w http.ResponseWriter, r *http.Request) {
