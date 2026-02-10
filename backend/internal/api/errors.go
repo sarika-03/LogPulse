@@ -3,8 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/logpulse/backend/internal/query"
 )
 
 // ErrorCode represents standardized error codes
@@ -56,45 +54,27 @@ func WriteQueryError(w http.ResponseWriter, err error, details string) {
 	var message string
 	var errorDetails string
 
-	// Check if it's a detailed QueryError
-	if queryErr, ok := err.(*query.QueryError); ok {
-		switch queryErr.Type {
-		case "syntax":
-			code = ErrorCodeBadQuery
-			message = "Invalid query syntax"
-			errorDetails = queryErr.Details
-		case "regex":
-			code = ErrorCodeInvalidRegex
-			message = "Invalid regex pattern"
-			errorDetails = queryErr.Details
-		default:
-			code = ErrorCodeBadQuery
-			message = queryErr.Message
-			errorDetails = queryErr.Details
-		}
-	} else {
-		// Handle legacy errors
-		switch err.Error() {
-		case "invalid query syntax":
-			code = ErrorCodeBadQuery
-			message = "Invalid query syntax"
-		case "invalid regex pattern":
-			code = ErrorCodeInvalidRegex
-			message = "Invalid regex pattern"
-		case "invalid time range in aggregation":
-			code = ErrorCodeInvalidTimeRange
-			message = "Invalid time range in aggregation"
-		default:
-			code = ErrorCodeBadQuery
-			message = "Query error"
-			if details == "" {
-				errorDetails = err.Error()
-			}
-		}
+	// Handle error based on error message content
+	switch err.Error() {
+	case "invalid query syntax":
+		code = ErrorCodeBadQuery
+		message = "Invalid query syntax"
+	case "invalid regex pattern":
+		code = ErrorCodeInvalidRegex
+		message = "Invalid regex pattern"
+	case "invalid time range in aggregation":
+		code = ErrorCodeInvalidTimeRange
+		message = "Invalid time range in aggregation"
+	default:
+		code = ErrorCodeBadQuery
+		message = "Query error"
 	}
 
 	if errorDetails == "" && details != "" {
 		errorDetails = details
+	}
+	if errorDetails == "" {
+		errorDetails = err.Error()
 	}
 
 	WriteErrorResponse(w, http.StatusBadRequest, code, message, errorDetails)

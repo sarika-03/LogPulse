@@ -171,7 +171,7 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
+	result, err := h.executor.Execute(queryStr, startTime, endTime, limit, 0)
 	if err != nil {
 		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
 		WriteQueryError(w, err, "")
@@ -266,7 +266,7 @@ func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
 		limit = parsedLimit
 	}
 
-	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
+	result, err := h.executor.Execute(queryStr, startTime, endTime, limit, 0)
 	if err != nil {
 		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
 		WriteQueryError(w, err, "")
