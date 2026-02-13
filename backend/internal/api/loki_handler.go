@@ -2,8 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -24,45 +27,54 @@ type LokiHandler struct {
 	executor *query.Executor
 
 	// Prometheus metrics
-	requestCount   *prometheus.CounterVec
-	latency        *prometheus.HistogramVec
-	errorCount     *prometheus.CounterVec
+	requestCount *prometheus.CounterVec
+	latency      *prometheus.HistogramVec
+	errorCount   *prometheus.CounterVec
 }
+
+var (
+	lokiMetricsOnce  sync.Once
+	lokiRequestCount *prometheus.CounterVec
+	lokiLatency      *prometheus.HistogramVec
+	lokiErrorCount   *prometheus.CounterVec
+)
 
 // NewLokiHandler creates a new Loki-compatible handler
 func NewLokiHandler(idx *index.Index, reader *storage.Reader) *LokiHandler {
-	requestCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "loki_handler_requests_total",
-			Help: "Total number of requests to LokiHandler endpoints.",
-		},
-		[]string{"endpoint", "method"},
-	)
-	latency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "loki_handler_request_duration_seconds",
-			Help:    "Request latency for LokiHandler endpoints.",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"endpoint", "method"},
-	)
-	errorCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "loki_handler_errors_total",
-			Help: "Total number of errors in LokiHandler endpoints.",
-		},
-		[]string{"endpoint", "method"},
-	)
+	lokiMetricsOnce.Do(func() {
+		lokiRequestCount = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_handler_requests_total",
+				Help: "Total number of requests to LokiHandler endpoints.",
+			},
+			[]string{"endpoint", "method"},
+		)
+		lokiLatency = prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "loki_handler_request_duration_seconds",
+				Help:    "Request latency for LokiHandler endpoints.",
+				Buckets: prometheus.DefBuckets,
+			},
+			[]string{"endpoint", "method"},
+		)
+		lokiErrorCount = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_handler_errors_total",
+				Help: "Total number of errors in LokiHandler endpoints.",
+			},
+			[]string{"endpoint", "method"},
+		)
 
-	prometheus.MustRegister(requestCount, latency, errorCount)
+		prometheus.MustRegister(lokiRequestCount, lokiLatency, lokiErrorCount)
+	})
 
 	return &LokiHandler{
 		index:        idx,
 		reader:       reader,
 		executor:     query.NewExecutor(idx, reader),
-		requestCount: requestCount,
-		latency:      latency,
-		errorCount:   errorCount,
+		requestCount: lokiRequestCount,
+		latency:      lokiLatency,
+		errorCount:   lokiErrorCount,
 	}
 }
 
@@ -101,6 +113,12 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 	endStr := r.URL.Query().Get("end")
 	limitStr := r.URL.Query().Get("limit")
 
+	// Validate query parameter
+	if queryStr == "" {
+		WriteValidationError(w, "query", "Query parameter is required")
+		return
+	}
+
 	// Parse time range (Loki uses nanoseconds or RFC3339)
 	var startTime, endTime time.Time
 	var err error
@@ -109,7 +127,7 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 		startTime, err = parseLokiTime(startStr)
 		if err != nil {
 			h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
-			http.Error(w, "Invalid start time format", http.StatusBadRequest)
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeInvalidTimeRange, "Invalid start time format", fmt.Sprintf("Expected nanoseconds or RFC3339 format, got: %s", startStr))
 			return
 		}
 	} else {
@@ -120,7 +138,7 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 		endTime, err = parseLokiTime(endStr)
 		if err != nil {
 			h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
-			http.Error(w, "Invalid end time format", http.StatusBadRequest)
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeInvalidTimeRange, "Invalid end time format", fmt.Sprintf("Expected nanoseconds or RFC3339 format, got: %s", endStr))
 			return
 		}
 	} else {
@@ -131,23 +149,36 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 	if !startTime.Before(endTime) {
 		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
 		http.Error(w, "Invalid time range: start must be before end", http.StatusBadRequest)
+	// Validate time range
+	if !startTime.IsZero() && !endTime.IsZero() && startTime.After(endTime) {
+		WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeInvalidTimeRange, "Invalid time range", "Start time must be before end time")
 		return
 	}
 
 	// Parse limit
 	limit := 1000
 	if limitStr != "" {
-		limit, err = strconv.Atoi(limitStr)
-		if err != nil || limit <= 0 {
-			limit = 1000
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit must be a positive integer")
+			return
 		}
+		if parsedLimit <= 0 {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit must be greater than 0")
+			return
+		}
+		if parsedLimit > 10000 {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit cannot exceed 10000")
+			return
+		}
+		limit = parsedLimit
 	}
 
 	// Execute query
 	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
 	if err != nil {
 		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
-		http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
+		WriteQueryError(w, err, "")
 		return
 	}
 
@@ -212,21 +243,37 @@ func (h *LokiHandler) Query(w http.ResponseWriter, r *http.Request) {
 	queryStr := r.URL.Query().Get("query")
 	limitStr := r.URL.Query().Get("limit")
 
+	// Validate query parameter
+	if queryStr == "" {
+		WriteValidationError(w, "query", "Query parameter is required")
+		return
+	}
+
 	endTime := time.Now()
 	startTime := endTime.Add(-5 * time.Minute)
 
 	limit := 100
 	if limitStr != "" {
-		limit, _ = strconv.Atoi(limitStr)
-		if limit <= 0 {
-			limit = 100
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit must be a positive integer")
+			return
 		}
+		if parsedLimit <= 0 {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit must be greater than 0")
+			return
+		}
+		if parsedLimit > 10000 {
+			WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeValidationError, "Invalid limit parameter", "Limit cannot exceed 10000")
+			return
+		}
+		limit = parsedLimit
 	}
 
 	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
 	if err != nil {
 		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
-		http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
+		WriteQueryError(w, err, "")
 		return
 	}
 
@@ -288,20 +335,13 @@ func (h *LokiHandler) LabelValues(w http.ResponseWriter, r *http.Request) {
 	// Extract label name from URL path
 	// Path: /loki/api/v1/label/{name}/values
 	path := r.URL.Path
-	var labelName string
 
-	// Parse: /loki/api/v1/label/service/values
-	if len(path) > 20 {
-		// Find label name between /label/ and /values
-		start := 18 // len("/loki/api/v1/label/")
-		end := len(path) - 7 // Remove /values
-		if end > start {
-			labelName = path[start:end]
-		}
-	}
+	// Use strings.TrimPrefix/TrimSuffix instead of hard-coded indices
+	labelName := strings.TrimPrefix(path, "/loki/api/v1/label/")
+	labelName = strings.TrimSuffix(labelName, "/values")
 
-	if labelName == "" {
-		http.Error(w, "Invalid label name", http.StatusBadRequest)
+	if labelName == "" || labelName == path {
+		WriteValidationError(w, "label", "Invalid or missing label name in URL path")
 		return
 	}
 
