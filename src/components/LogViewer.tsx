@@ -1,5 +1,5 @@
 import { LogEntry, LogLevel } from '@/types/logs';
-import { ChevronRight, Copy } from 'lucide-react';
+import { ChevronRight, Copy, ChevronLeft } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { LogExport } from './LogExport';
@@ -8,6 +8,10 @@ interface LogViewerProps {
   logs: LogEntry[];
   isLoading?: boolean;
   isConnected: boolean;
+  total?: number;
+  hasMore?: boolean;
+  currentOffset?: number;
+  onPageChange?: (offset: number) => void;
   queryStats?: {
     queriedChunks: number;
     scannedLines: number;
@@ -73,6 +77,7 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
           )}
           <span className="text-muted-foreground">
             Results: <span className="text-foreground">{logs.length}</span>
+            {total !== undefined && <span className="text-muted-foreground"> / {total}</span>}
           </span>
         </div>
         <LogExport logs={logs} />
@@ -88,6 +93,47 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
           />
         ))}
       </div>
+      
+      {/* Pagination Controls */}
+      {(total !== undefined || hasMore) && (
+        <div className="px-6 py-3 bg-muted/30 border-t border-border flex items-center justify-between">
+          <div className="text-xs text-muted-foreground font-mono">
+            {currentOffset !== undefined && total !== undefined ? (
+              <>
+                Page: <span className="text-foreground">{Math.floor(currentOffset / 100) + 1}</span>
+                {' '} (Showing{' '}
+                <span className="text-foreground">{currentOffset + 1}</span>
+                {' '}-{' '}
+                <span className="text-foreground">
+                  {Math.min(currentOffset + logs.length, total)}
+                </span>
+                {' '}of{' '}
+                <span className="text-foreground">{total}</span>)
+              </>
+            ) : null}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onPageChange?.(Math.max(0, (currentOffset || 0) - 100))}
+              disabled={!currentOffset || currentOffset === 0}
+              className="p-2 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+              title="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            
+            <button
+              onClick={() => onPageChange?.((currentOffset || 0) + 100)}
+              disabled={!hasMore}
+              className="p-2 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

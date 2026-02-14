@@ -28,6 +28,9 @@ type QueryResult struct {
 	Logs        []LogResponse        `json:"logs"`
 	Stats       QueryStats           `json:"stats"`
 	Aggregation *AggregationResult   `json:"aggregation,omitempty"`
+	Total       int                  `json:"total"`       // Total matching logs
+	HasMore     bool                 `json:"hasMore"`     // Whether more logs exist
+	Offset      int                  `json:"offset"`      // Current offset
 }
 
 type LogResponse struct {
@@ -63,8 +66,8 @@ type AggregationGroup struct {
 	Value  float64           `json:"value"`
 }
 
-// Execute runs a query and returns matching logs
-func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit int) (*QueryResult, error) {
+// Execute runs a query and returns matching logs with pagination support
+func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit, offset int) (*QueryResult, error) {
 	startExec := time.Now()
 
 	// Parse query with advanced features
@@ -89,6 +92,13 @@ func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit 
 	}
 
 	var allLogs []models.LogEntry
+
+	// Optimization: For non-aggregation queries with pagination, we don't need all logs
+	// Stop collecting once we have offset + limit + some buffer for sorting
+	maxLogsToCollect := offset + limit
+	if maxLogsToCollect <= 0 {
+		maxLogsToCollect = 1000 // Reasonable default
+	}
 
 	// Read logs from each chunk
 	for _, chunkID := range chunkIDs {
@@ -117,6 +127,18 @@ func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit 
 			}
 
 			allLogs = append(allLogs, entry)
+
+			// Early exit optimization for pagination queries
+			// (but still read all for accurate total count in aggregations)
+			if parsed.Aggregation == nil && len(allLogs) > maxLogsToCollect*2 {
+				// We have enough to satisfy pagination + some buffer for sorting
+				break
+			}
+		}
+
+		// If we have enough logs, stop reading more chunks
+		if parsed.Aggregation == nil && len(allLogs) > maxLogsToCollect*2 {
+			break
 		}
 	}
 
@@ -133,14 +155,44 @@ func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit 
 		aggResult = e.computeAggregation(parsed.Aggregation, allLogs, startTime, endTime)
 	}
 
-	// Apply limit (only for non-aggregation queries)
-	if limit > 0 && len(allLogs) > limit && parsed.Aggregation == nil {
-		allLogs = allLogs[:limit]
+	// Calculate total before pagination
+	totalLogs := len(allLogs)
+
+	// Apply pagination (only for non-aggregation queries)
+	var paginatedLogs []models.LogEntry
+	hasMore := false
+
+	if parsed.Aggregation == nil {
+		// Calculate offsets for pagination
+		if offset < 0 {
+			offset = 0
+		}
+		if limit <= 0 {
+			limit = 100 // Default limit
+		}
+
+		// Check if there are more logs after this page
+		if offset+limit < totalLogs {
+			hasMore = true
+		}
+
+		// Apply offset and limit
+		end := offset + limit
+		if end > totalLogs {
+			end = totalLogs
+		}
+
+		if offset < totalLogs {
+			paginatedLogs = allLogs[offset:end]
+		}
+	} else {
+		// For aggregations, return all logs without pagination
+		paginatedLogs = allLogs
 	}
 
 	// Convert to response format
-	logs := make([]LogResponse, len(allLogs))
-	for i, entry := range allLogs {
+	logs := make([]LogResponse, len(paginatedLogs))
+	for i, entry := range paginatedLogs {
 		level := "info"
 		if l, ok := entry.Labels["level"]; ok {
 			level = l
@@ -161,6 +213,9 @@ func (e *Executor) Execute(queryStr string, startTime, endTime time.Time, limit 
 		Logs:        logs,
 		Stats:       stats,
 		Aggregation: aggResult,
+		Total:       totalLogs,
+		HasMore:     hasMore,
+		Offset:      offset,
 	}, nil
 }
 

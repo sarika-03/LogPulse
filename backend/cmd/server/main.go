@@ -61,7 +61,7 @@ func main() {
 		}
 		endTime := time.Now()
 		startTime := endTime.Add(-5 * time.Minute)
-		result, err := executor.Execute(expr, startTime, endTime, 0)
+		result, err := executor.Execute(expr, startTime, endTime, 0, 0)
 		if err != nil {
 			return 0, err
 		}

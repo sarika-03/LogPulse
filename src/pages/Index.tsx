@@ -14,7 +14,7 @@ import { useBackendConnection } from '@/hooks/useBackendConnection';
 import { LogEntry, BackendConfig, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Search, Tag, Activity, Bell, FlaskConical, Radio, BarChart3, Zap } from 'lucide-react';
+import { Search, Tag, Activity, Bell, FlaskConical, Radio, BarChart3, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type TabType = 'logs' | 'live' | 'labels' | 'metrics' | 'analytics' | 'alerts';
 type RightPanelType = 'test' | null;
@@ -28,6 +28,10 @@ const Index = () => {
   const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
   const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
   const [currentTimeRange, setCurrentTimeRange] = useState('1h');
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 100;
 
   // Use the backend connection hook
   const { 
@@ -112,7 +116,7 @@ const Index = () => {
     };
   };
 
-  const handleQuery = useCallback(async (query: string, timeRange: string) => {
+  const handleQuery = useCallback(async (query: string, timeRange: string, offset: number = 0) => {
     if (!isConnected) {
       toast.error('Not connected to backend', {
         description: 'Click the settings icon to configure your connection',
@@ -122,23 +126,31 @@ const Index = () => {
 
     setCurrentQuery(query);
     setCurrentTimeRange(timeRange);
+    setCurrentOffset(offset);
     setIsLoading(true);
     
     try {
       const labels = parseQuery(query);
       const { start, end } = getTimeRange(timeRange);
       
-      console.log('[Query] Executing:', { query, labels, start, end });
-      const result = await apiClient.query(labels, start, end, 1000);
+      console.log('[Query] Executing:', { query, labels, start, end, offset, limit: pageSize });
+      const result = await apiClient.query(labels, start, end, pageSize, offset);
       
       setLogs(result.logs);
       setQueryStats(result.stats);
+      setTotalLogs(result.total);
+      setHasMore(result.hasMore);
+      setCurrentOffset(result.offset);
       
-      console.log('[Query] Results:', { count: result.logs.length, stats: result.stats });
+      console.log('[Query] Results:', { count: result.logs.length, total: result.total, hasMore: result.hasMore, stats: result.stats });
       
-      if (result.logs.length === 0) {
+      if (result.logs.length === 0 && offset === 0) {
         toast.info('No logs found', {
           description: 'Try adjusting your query or time range',
+        });
+      } else if (result.logs.length === 0) {
+        toast.info('No more logs', {
+          description: 'You have reached the end of the results',
         });
       } else {
         toast.success(`Found ${result.logs.length} logs`, {
@@ -151,18 +163,34 @@ const Index = () => {
       toast.error('Query failed', { description: errorMessage });
       setLogs([]);
       setQueryStats(undefined);
+      setTotalLogs(0);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, pageSize]);
 
   const handleRefresh = useCallback(() => {
     if (isConnected) {
-      handleQuery(currentQuery, currentTimeRange);
+      handleQuery(currentQuery, currentTimeRange, currentOffset);
     } else {
       toast.error('Cannot refresh: Not connected to backend');
     }
-  }, [isConnected, handleQuery, currentQuery, currentTimeRange]);
+  }, [isConnected, handleQuery, currentQuery, currentTimeRange, currentOffset]);
+
+  const handleNextPage = useCallback(() => {
+    const nextOffset = currentOffset + pageSize;
+    if (nextOffset < totalLogs) {
+      handleQuery(currentQuery, currentTimeRange, nextOffset);
+    }
+  }, [currentOffset, totalLogs, pageSize, handleQuery, currentQuery, currentTimeRange]);
+
+  const handlePreviousPage = useCallback(() => {
+    const prevOffset = currentOffset - pageSize;
+    if (prevOffset >= 0) {
+      handleQuery(currentQuery, currentTimeRange, prevOffset);
+    }
+  }, [currentOffset, pageSize, handleQuery, currentQuery, currentTimeRange]);
 
   const handleSaveConfig = async (newConfig: BackendConfig) => {
     const success = await connect(newConfig);
@@ -286,17 +314,49 @@ const Index = () => {
                       {isConnected && (
                         <div className="px-6 py-2 border-b border-border flex items-center justify-between bg-muted/30">
                           <span className="text-sm text-muted-foreground font-mono">
-                            {logs.length > 0 ? `Showing ${logs.length} logs` : 'No logs yet'}
+                            {logs.length > 0 
+                              ? `Showing ${currentOffset + 1}-${currentOffset + logs.length} of ${totalLogs} logs` 
+                              : 'No logs yet'}
                           </span>
-                          {health && (
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground font-mono">
-                              <span>Backend: {health.status}</span>
-                              <span>•</span>
-                              <span>Rate: {health.ingestionRate}/s</span>
-                              <span>•</span>
-                              <span>Chunks: {health.chunksCount}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {health && (
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground font-mono mr-4">
+                                <span>Backend: {health.status}</span>
+                                <span>•</span>
+                                <span>Rate: {health.ingestionRate}/s</span>
+                                <span>•</span>
+                                <span>Chunks: {health.chunksCount}</span>
+                              </div>
+                            )}
+                            {totalLogs > pageSize && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={handlePreviousPage}
+                                  disabled={currentOffset === 0 || isLoading}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                    currentOffset === 0 || isLoading
+                                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                                      : 'bg-primary/10 text-primary hover:bg-primary/20'
+                                  }`}
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                  Previous
+                                </button>
+                                <button
+                                  onClick={handleNextPage}
+                                  disabled={!hasMore || isLoading}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                    !hasMore || isLoading
+                                      ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
+                                      : 'bg-primary/10 text-primary hover:bg-primary/20'
+                                  }`}
+                                >
+                                  Next
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                       
@@ -305,6 +365,10 @@ const Index = () => {
                         isLoading={isLoading}
                         isConnected={isConnected}
                         queryStats={queryStats}
+                        total={totalLogs}
+                        hasMore={hasMore}
+                        currentOffset={currentOffset}
+                        onPageChange={(offset) => handleQuery(currentQuery, currentTimeRange, offset)}
                       />
                     </div>
                   </div>
