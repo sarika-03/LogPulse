@@ -145,6 +145,10 @@ func (h *LokiHandler) QueryRange(w http.ResponseWriter, r *http.Request) {
 		endTime = time.Now()
 	}
 
+	// ✅ ADD THIS BLOCK — Validate time range
+	if !startTime.Before(endTime) {
+		h.errorCount.WithLabelValues(endpoint, r.Method).Inc()
+		http.Error(w, "Invalid time range: start must be before end", http.StatusBadRequest)
 	// Validate time range
 	if !startTime.IsZero() && !endTime.IsZero() && startTime.After(endTime) {
 		WriteErrorResponse(w, http.StatusBadRequest, ErrorCodeInvalidTimeRange, "Invalid time range", "Start time must be before end time")
