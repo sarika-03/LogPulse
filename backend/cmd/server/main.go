@@ -9,18 +9,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/logpulse/backend/internal/api"
+	"github.com/logpulse/backend/internal/config"
+	"github.com/logpulse/backend/internal/index"
+	"github.com/logpulse/backend/internal/ingest"
+	"github.com/logpulse/backend/internal/plugin"
+	"github.com/logpulse/backend/internal/query"
+	"github.com/logpulse/backend/internal/storage"
 	gootel "go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-	"github.com/logpulse/backend/internal/plugin"
-	"github.com/logpulse/backend/internal/api"
-	"github.com/logpulse/backend/internal/config"
-	"github.com/logpulse/backend/internal/index"
-	"github.com/logpulse/backend/internal/ingest"
-	"github.com/logpulse/backend/internal/query"
-	"github.com/logpulse/backend/internal/storage"
 )
 
 func main() {
@@ -75,7 +75,7 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-rootCtx.Done():
@@ -114,7 +114,7 @@ func main() {
 	labelIndex := index.NewIndex()
 	storageWriter := storage.NewWriter(cfg.Storage.Path, cfg.Storage.ChunkSizeBytes)
 	storageReader := storage.NewReader(cfg.Storage.Path)
-	
+
 	// Initialize executor for alerts
 	executor = query.NewExecutor(labelIndex, storageReader)
 
@@ -147,46 +147,52 @@ func main() {
 
 	// Proper graceful shutdown with context and synchronization
 	shutdownComplete := make(chan struct{})
-	
+
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 
 		log.Println("Graceful shutdown initiated...")
-		
-		// Signal all goroutines to stop
-		rootCancel()
-		
-		// Wait for ingestor to flush remaining logs (with timeout)
+
+		// Step 1: Shutdown HTTP server first to drain in-flight requests
+		// This allows existing requests to complete before we stop accepting new ones
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		log.Println("Draining in-flight HTTP requests...")
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Server shutdown error: %v", err)
+		} else {
+			log.Println("HTTP server shutdown complete - all requests drained")
+		}
+
+		// Step 2: Flush ingestor buffers to ensure all ingested logs are written
 		flushDone := make(chan struct{})
 		go func() {
+			log.Println("Flushing ingestor buffers...")
 			ingestor.Stop()
 			close(flushDone)
 		}()
-		
+
 		select {
 		case <-flushDone:
 			log.Println("Ingestor flushed successfully")
 		case <-time.After(10 * time.Second):
 			log.Println("WARNING: Ingestor flush timeout")
 		}
-		
-		// Shutdown HTTP server with timeout
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer shutdownCancel()
-		
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Server shutdown error: %v", err)
-		}
-		
+
+		// Step 3: Cancel context to stop background workers (alerts, retention, etc.)
+		log.Println("Stopping background workers...")
+		rootCancel()
+
 		close(shutdownComplete)
 	}()
 
 	// Start server
 	log.Printf("LokiLite is ready at http://localhost:%s", cfg.Server.Port)
 	log.Printf("WebSocket streaming available at ws://localhost:%s/stream", cfg.Server.Port)
-	
+
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
