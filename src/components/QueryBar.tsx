@@ -1,6 +1,8 @@
 import { Search, Play, Clock, RefreshCw, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
+// Enhanced with query validation and error feedback (Issue #16)
+
 const timeRanges = [
   { label: 'Last 5 minutes', value: '5m', duration: 5 },
   { label: 'Last 15 minutes', value: '15m', duration: 15 },
@@ -18,9 +20,29 @@ interface QueryBarProps {
 export function QueryBar({ onQuery, onRefresh, isLoading, isConnected }: QueryBarProps) {
   const [query, setQuery] = useState('{service="api-gateway"}');
   const [selectedRange, setSelectedRange] = useState('1h');
+    const [queryError, setQueryError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
+
+      // Simple query validation
+  const validateQuery = (q: string): string | null => {
+    if (!q || q.trim() === '') {
+      return 'Query cannot be empty';
+    }
+    if (!q.includes('{') || !q.includes('}')) {
+      return 'Invalid LogQL syntax: Query must contain { } braces';
+    }
+    return null;
+  };
     e.preventDefault();
+        
+    // Validate query before submission
+    const error = validateQuery(query);
+    if (error) {
+      setQueryError(error);
+      return;
+    }
+    setQueryError(null);
     if (isConnected) {
       onQuery(query, selectedRange);
     }
@@ -41,6 +63,12 @@ export function QueryBar({ onQuery, onRefresh, isLoading, isConnected }: QueryBa
             autoComplete="off"
           />
         </div>
+                {queryError && (
+          <div className="text-sm text-red-500 mt-2 flex items-center gap-2">
+            <span>⚠</span>
+            <span>{queryError}</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
