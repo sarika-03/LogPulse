@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,18 +17,24 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string `yaml:"port"`
+	Port         string `yaml:"port"`
+	ReadTimeout  string `yaml:"read_timeout"`
+	WriteTimeout string `yaml:"write_timeout"`
+	IdleTimeout  string `yaml:"idle_timeout"`
 }
 
 type StorageConfig struct {
-	Path           string `yaml:"path"`
-	ChunkSizeBytes int    `yaml:"chunk_size_bytes"`
-	RetentionDays  int    `yaml:"retention_days"`
+	Path               string `yaml:"path"`
+	ChunkSizeBytes     int    `yaml:"chunk_size_bytes"`
+	RetentionDays      int    `yaml:"retention_days"`
+	CompressionEnabled bool   `yaml:"compression_enabled"`
 }
 
 type IngestConfig struct {
 	BufferSize    int `yaml:"buffer_size"`
 	FlushInterval int `yaml:"flush_interval_ms"`
+	MaxBatchSize  int `yaml:"max_batch_size"`
+	Workers       int `yaml:"workers"`
 }
 
 type AuthConfig struct {
@@ -64,15 +72,51 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Override with environment variables
-	if port := os.Getenv("LOKILITE_PORT"); port != "" {
+	if port := os.Getenv("LOGPULSE_PORT"); port != "" {
 		cfg.Server.Port = port
 	}
-	if apiKey := os.Getenv("LOKILITE_API_KEY"); apiKey != "" {
+	if apiKey := os.Getenv("LOGPULSE_API_KEY"); apiKey != "" {
 		cfg.Auth.APIKey = apiKey
 		cfg.Auth.Enabled = true
 	}
-	if storagePath := os.Getenv("LOKILITE_STORAGE_PATH"); storagePath != "" {
+	if storagePath := os.Getenv("LOGPULSE_STORAGE_PATH"); storagePath != "" {
 		cfg.Storage.Path = storagePath
+	}
+
+	// Rate limit environment variable overrides
+	if enabled := os.Getenv("LOGPULSE_RATE_LIMIT_ENABLED"); enabled != "" {
+		cfg.RateLimit.Enabled = enabled == "true"
+	}
+	if rpm := os.Getenv("LOGPULSE_RATE_LIMIT_RPM"); rpm != "" {
+		if val, err := strconv.Atoi(rpm); err == nil {
+			cfg.RateLimit.RequestsPerMinute = val
+		}
+	}
+	if burst := os.Getenv("LOGPULSE_RATE_LIMIT_BURST"); burst != "" {
+		if val, err := strconv.Atoi(burst); err == nil {
+			cfg.RateLimit.Burst = val
+		}
+	}
+	if whitelist := os.Getenv("LOGPULSE_RATE_LIMIT_WHITELIST"); whitelist != "" {
+		ips := strings.Split(whitelist, ",")
+		for i := range ips {
+			ips[i] = strings.TrimSpace(ips[i])
+		}
+		cfg.RateLimit.WhitelistIPs = ips
+	}
+	if blacklist := os.Getenv("LOGPULSE_RATE_LIMIT_BLACKLIST"); blacklist != "" {
+		ips := strings.Split(blacklist, ",")
+		for i := range ips {
+			ips[i] = strings.TrimSpace(ips[i])
+		}
+		cfg.RateLimit.BlacklistIPs = ips
+	}
+	if proxies := os.Getenv("LOGPULSE_RATE_LIMIT_TRUSTED_PROXIES"); proxies != "" {
+		ips := strings.Split(proxies, ",")
+		for i := range ips {
+			ips[i] = strings.TrimSpace(ips[i])
+		}
+		cfg.RateLimit.TrustedProxies = ips
 	}
 
 	return &cfg, nil
