@@ -38,12 +38,25 @@ type Ingestor struct {
 	droppedBroadcasts int64
 	metricsMu         sync.RWMutex
 
+	// Flush progress tracking
+	flushProgress     *FlushProgress
+	flushProgressLock sync.RWMutex
+
 	// Kubernetes context
 	k8sLabels      map[string]string
 	k8sAnnotations map[string]string
 
 	stopChan chan struct{}
 	wg       sync.WaitGroup
+}
+
+// FlushProgress tracks the progress of buffer flushing during shutdown
+type FlushProgress struct {
+	TotalBuffers   int
+	FlushedBuffers int
+	TotalEntries   int
+	FlushedEntries int
+	StartTime      time.Time
 }
 
 type logBuffer struct {
@@ -86,6 +99,53 @@ func (ing *Ingestor) Stop() {
 	ing.wg.Wait()
 	ing.flushAll()
 	close(ing.broadcastQueue) // Signal broadcast workers to exit
+}
+
+// StopWithProgress gracefully shuts down the ingestor with progress tracking
+func (ing *Ingestor) StopWithProgress() *FlushProgress {
+	close(ing.stopChan)
+	ing.wg.Wait()
+
+	// Initialize progress tracking
+	ing.bufferMu.Lock()
+	totalBuffers := len(ing.buffers)
+	totalEntries := 0
+	for _, buf := range ing.buffers {
+		totalEntries += len(buf.entries)
+	}
+	ing.bufferMu.Unlock()
+
+	progress := &FlushProgress{
+		TotalBuffers: totalBuffers,
+		TotalEntries: totalEntries,
+		StartTime:    time.Now(),
+	}
+
+	ing.flushProgressLock.Lock()
+	ing.flushProgress = progress
+	ing.flushProgressLock.Unlock()
+
+	ing.flushAllWithProgress()
+	close(ing.broadcastQueue)
+
+	return progress
+}
+
+// GetFlushProgress returns the current flush progress
+func (ing *Ingestor) GetFlushProgress() *FlushProgress {
+	ing.flushProgressLock.RLock()
+	defer ing.flushProgressLock.RUnlock()
+	if ing.flushProgress == nil {
+		return nil
+	}
+	// Return a copy to avoid race conditions
+	return &FlushProgress{
+		TotalBuffers:   ing.flushProgress.TotalBuffers,
+		FlushedBuffers: ing.flushProgress.FlushedBuffers,
+		TotalEntries:   ing.flushProgress.TotalEntries,
+		FlushedEntries: ing.flushProgress.FlushedEntries,
+		StartTime:      ing.flushProgress.StartTime,
+	}
 }
 
 // GetK8sContext returns Kubernetes labels and annotations
@@ -236,6 +296,29 @@ func (ing *Ingestor) flushAll() {
 	for hash, buf := range ing.buffers {
 		if len(buf.entries) > 0 {
 			ing.flushBuffer(hash, buf)
+			buf.entries = buf.entries[:0]
+			buf.size = 0
+		}
+	}
+}
+
+// flushAllWithProgress flushes all buffers with progress tracking
+func (ing *Ingestor) flushAllWithProgress() {
+	ing.bufferMu.Lock()
+	defer ing.bufferMu.Unlock()
+
+	for hash, buf := range ing.buffers {
+		if len(buf.entries) > 0 {
+			ing.flushBuffer(hash, buf)
+
+			// Update progress
+			ing.flushProgressLock.Lock()
+			if ing.flushProgress != nil {
+				ing.flushProgress.FlushedBuffers++
+				ing.flushProgress.FlushedEntries += len(buf.entries)
+			}
+			ing.flushProgressLock.Unlock()
+
 			buf.entries = buf.entries[:0]
 			buf.size = 0
 		}

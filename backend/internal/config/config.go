@@ -7,10 +7,11 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	Storage StorageConfig `yaml:"storage"`
-	Ingest  IngestConfig  `yaml:"ingest"`
-	Auth    AuthConfig    `yaml:"auth"`
+	Server   ServerConfig   `yaml:"server"`
+	Storage  StorageConfig  `yaml:"storage"`
+	Ingest   IngestConfig   `yaml:"ingest"`
+	Auth     AuthConfig     `yaml:"auth"`
+	Shutdown ShutdownConfig `yaml:"shutdown"`
 }
 
 type ServerConfig struct {
@@ -31,6 +32,12 @@ type IngestConfig struct {
 type AuthConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	APIKey  string `yaml:"api_key"`
+}
+
+type ShutdownConfig struct {
+	HTTPTimeout     int `yaml:"http_timeout_seconds"`
+	IngestorTimeout int `yaml:"ingestor_timeout_seconds"`
+	ProgressLog     int `yaml:"progress_log_interval_seconds"`
 }
 
 func Load(path string) (*Config, error) {
@@ -77,6 +84,11 @@ func DefaultConfig() *Config {
 		Auth: AuthConfig{
 			Enabled: false,
 			APIKey:  "",
+		},
+		Shutdown: ShutdownConfig{
+			HTTPTimeout:     30,
+			IngestorTimeout: 30,
+			ProgressLog:     2,
 		},
 	}
 }
