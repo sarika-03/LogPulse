@@ -171,7 +171,7 @@ func main() {
 		ingestorTimeout := time.Duration(cfg.Shutdown.IngestorTimeout) * time.Second
 		progressInterval := time.Duration(cfg.Shutdown.ProgressLog) * time.Second
 
-		flushDone := make(chan *ingest.FlushProgress)
+		flushDone := make(chan *ingest.FlushProgress, 1) // Buffered to prevent goroutine leak
 		go func() {
 			log.Println("Flushing ingestor buffers...")
 			progress := ingestor.StopWithProgress()

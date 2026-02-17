@@ -96,14 +96,15 @@ func (ing *Ingestor) Start() {
 // Stop gracefully shuts down the ingestor
 func (ing *Ingestor) Stop() {
 	close(ing.stopChan)
+	close(ing.broadcastQueue) // Close before wg.Wait() to unblock broadcast workers
 	ing.wg.Wait()
 	ing.flushAll()
-	close(ing.broadcastQueue) // Signal broadcast workers to exit
 }
 
 // StopWithProgress gracefully shuts down the ingestor with progress tracking
 func (ing *Ingestor) StopWithProgress() *FlushProgress {
 	close(ing.stopChan)
+	close(ing.broadcastQueue) // Close before wg.Wait() to unblock broadcast workers
 	ing.wg.Wait()
 
 	// Initialize progress tracking
@@ -126,7 +127,6 @@ func (ing *Ingestor) StopWithProgress() *FlushProgress {
 	ing.flushProgressLock.Unlock()
 
 	ing.flushAllWithProgress()
-	close(ing.broadcastQueue)
 
 	return progress
 }
@@ -249,6 +249,9 @@ func (ing *Ingestor) Ingest(req *models.IngestRequest) (int, error) {
 // enqueueBroadcast attempts to queue a log entry for broadcast
 func (ing *Ingestor) enqueueBroadcast(entry models.LogEntry) {
 	select {
+	case <-ing.stopChan:
+		// Ingestor is stopping, don't send on potentially closed channel
+		return
 	case ing.broadcastQueue <- entry:
 		atomic.AddInt64(&ing.broadcastedLines, 1)
 	default:

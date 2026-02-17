@@ -52,6 +52,17 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	// Validate and clamp shutdown timeouts to prevent panics
+	if cfg.Shutdown.HTTPTimeout <= 0 {
+		cfg.Shutdown.HTTPTimeout = 30 // Default to 30 seconds
+	}
+	if cfg.Shutdown.IngestorTimeout <= 0 {
+		cfg.Shutdown.IngestorTimeout = 30 // Default to 30 seconds
+	}
+	if cfg.Shutdown.ProgressLog <= 0 {
+		cfg.Shutdown.ProgressLog = 2 // Default to 2 seconds
+	}
+
 	// Override with environment variables
 	if port := os.Getenv("LOKILITE_PORT"); port != "" {
 		cfg.Server.Port = port
