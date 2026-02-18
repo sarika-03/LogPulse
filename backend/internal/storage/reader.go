@@ -69,6 +69,43 @@ func (r *Reader) ReadChunkFiltered(labels map[string]string, chunkID string, sta
 	return filtered, scannedLines, nil
 }
 
+// ReadChunkFilteredWithPagination reads entries with pagination support (limit + offset)
+func (r *Reader) ReadChunkFilteredWithPagination(labels map[string]string, chunkID string, startTime, endTime time.Time, limit, offset int) ([]models.LogEntry, int, error) {
+	entries, err := r.ReadChunk(labels, chunkID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	scannedLines := len(entries)
+	filtered := make([]models.LogEntry, 0, limit) // Preallocate
+
+	count := 0
+	skipped := 0
+
+	for _, entry := range entries {
+		// Time range filter
+		if entry.Timestamp.Before(startTime) || entry.Timestamp.After(endTime) {
+			continue
+		}
+
+		// Skip first 'offset' entries
+		if skipped < offset {
+			skipped++
+			continue
+		}
+
+		// Stop when we have enough
+		if limit > 0 && count >= limit {
+			break
+		}
+
+		filtered = append(filtered, entry)
+		count++
+	}
+
+	return filtered, scannedLines, nil
+}
+
 // GetChunkMeta reads chunk metadata
 func (r *Reader) GetChunkMeta(labels map[string]string, chunkID string) (*models.ChunkMeta, error) {
 	labelPath := models.Labels(labels).ToPath()

@@ -59,6 +59,9 @@ export interface QueryResult {
     scannedLines: number;
     executionTime: number;
   };
+  total: number;      // Total matching logs
+  hasMore: boolean;   // Whether more logs exist
+  offset: number;     // Current offset
 }
 
 // Prometheus-compatible metrics format

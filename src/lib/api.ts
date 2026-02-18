@@ -54,7 +54,8 @@ class ApiClient {
     labels: Record<string, string>,
     start?: string,
     end?: string,
-    limit: number = 100
+    limit: number = 100,
+    offset: number = 0
   ): Promise<QueryResult> {
     const params = new URLSearchParams();
     
@@ -66,6 +67,7 @@ class ApiClient {
     if (start) params.set('start', start);
     if (end) params.set('end', end);
     params.set('limit', limit.toString());
+    params.set('offset', offset.toString());
 
     const response = await fetch(`${this.getBaseUrl()}/query?${params}`, {
       headers: this.getHeaders(),
