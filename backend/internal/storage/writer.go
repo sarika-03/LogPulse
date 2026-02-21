@@ -32,39 +32,50 @@ func NewWriter(basePath string, chunkSize int) *Writer {
 
 // WriteChunk writes a batch of logs to a new chunk file
 func (w *Writer) WriteChunk(labels map[string]string, entries []models.LogEntry) (string, time.Time, time.Time, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	// Generate chunk ID
+	// Generate chunk ID and prepare paths outside of lock
 	seq := atomic.AddInt64(&w.chunkSeq, 1)
 	chunkID := fmt.Sprintf("chunk_%d_%d", time.Now().Unix(), seq)
-
-	// Create directory for label set
 	labelPath := models.Labels(labels).ToPath()
 	dirPath := filepath.Join(w.basePath, labelPath)
+
+	// Create directory (can be done without lock)
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		return "", time.Time{}, time.Time{}, err
 	}
 
-	// Create chunk file
+	// Prepare file paths
 	chunkPath := filepath.Join(dirPath, chunkID+".log")
+	metaPath := filepath.Join(dirPath, chunkID+".meta")
+
+	// Calculate time range by finding min/max timestamps
+	// Don't assume entries are sorted
+	var startTime, endTime time.Time
+	if len(entries) > 0 {
+		startTime = entries[0].Timestamp
+		endTime = entries[0].Timestamp
+		for _, entry := range entries[1:] {
+			if entry.Timestamp.Before(startTime) {
+				startTime = entry.Timestamp
+			}
+			if entry.Timestamp.After(endTime) {
+				endTime = entry.Timestamp
+			}
+		}
+	}
+
+	// Only lock for the actual file creation and writing
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Create and write chunk file
 	file, err := os.Create(chunkPath)
 	if err != nil {
 		return "", time.Time{}, time.Time{}, err
 	}
 	defer file.Close()
 
-	// Write entries
 	writer := bufio.NewWriter(file)
-	var startTime, endTime time.Time
-
-	for i, entry := range entries {
-		if i == 0 {
-			startTime = entry.Timestamp
-		}
-		endTime = entry.Timestamp
-
-		// Write as JSON line
+	for _, entry := range entries {
 		line, _ := json.Marshal(entry)
 		writer.Write(line)
 		writer.WriteByte('\n')
@@ -83,7 +94,6 @@ func (w *Writer) WriteChunk(labels map[string]string, entries []models.LogEntry)
 		EntryCount: len(entries),
 	}
 
-	metaPath := filepath.Join(dirPath, chunkID+".meta")
 	metaFile, err := os.Create(metaPath)
 	if err != nil {
 		return "", time.Time{}, time.Time{}, err

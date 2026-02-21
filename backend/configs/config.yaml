@@ -47,3 +47,8 @@ metrics:
 logging:
   level: "info"  # debug, info, warn, error
   format: "json"  # json, text
+
+shutdown:
+  http_timeout_seconds: 30          # Timeout for draining HTTP requests
+  ingestor_timeout_seconds: 30      # Timeout for flushing ingestor buffers
+  progress_log_interval_seconds: 2  # Interval for logging flush progress

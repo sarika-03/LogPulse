@@ -156,32 +156,68 @@ func main() {
 		log.Println("Graceful shutdown initiated...")
 
 		// Step 1: Shutdown HTTP server first to drain in-flight requests
-		// This allows existing requests to complete before we stop accepting new ones
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		httpTimeout := time.Duration(cfg.Shutdown.HTTPTimeout) * time.Second
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), httpTimeout)
 		defer shutdownCancel()
 
-		log.Println("Draining in-flight HTTP requests...")
+		log.Printf("Draining in-flight HTTP requests (timeout: %v)...", httpTimeout)
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("Server shutdown error: %v", err)
 		} else {
 			log.Println("HTTP server shutdown complete - all requests drained")
 		}
 
-		// Step 2: Flush ingestor buffers to ensure all ingested logs are written
-		flushDone := make(chan struct{})
+		// Step 2: Flush ingestor buffers with progress monitoring
+		ingestorTimeout := time.Duration(cfg.Shutdown.IngestorTimeout) * time.Second
+		progressInterval := time.Duration(cfg.Shutdown.ProgressLog) * time.Second
+
+		flushDone := make(chan *ingest.FlushProgress, 1) // Buffered to prevent goroutine leak
 		go func() {
 			log.Println("Flushing ingestor buffers...")
-			ingestor.Stop()
-			close(flushDone)
+			progress := ingestor.StopWithProgress()
+			flushDone <- progress
 		}()
 
-		select {
-		case <-flushDone:
-			log.Println("Ingestor flushed successfully")
-		case <-time.After(10 * time.Second):
-			log.Println("WARNING: Ingestor flush timeout")
+		// Progress monitoring ticker
+		progressTicker := time.NewTicker(progressInterval)
+		defer progressTicker.Stop()
+
+		timeoutTimer := time.NewTimer(ingestorTimeout)
+		defer timeoutTimer.Stop()
+
+		for {
+			select {
+			case progress := <-flushDone:
+				elapsed := time.Since(progress.StartTime)
+				log.Printf("Ingestor flushed successfully: buffers=%d/%d, entries=%d/%d, duration=%v",
+					progress.FlushedBuffers, progress.TotalBuffers,
+					progress.FlushedEntries, progress.TotalEntries,
+					elapsed)
+				goto shutdownComplete
+
+			case <-progressTicker.C:
+				if progress := ingestor.GetFlushProgress(); progress != nil {
+					elapsed := time.Since(progress.StartTime)
+					log.Printf("Flush progress: buffers=%d/%d, entries=%d/%d, elapsed=%v",
+						progress.FlushedBuffers, progress.TotalBuffers,
+						progress.FlushedEntries, progress.TotalEntries,
+						elapsed)
+				}
+
+			case <-timeoutTimer.C:
+				if progress := ingestor.GetFlushProgress(); progress != nil {
+					log.Printf("WARNING: Ingestor flush timeout after %v - buffers=%d/%d, entries=%d/%d",
+						ingestorTimeout,
+						progress.FlushedBuffers, progress.TotalBuffers,
+						progress.FlushedEntries, progress.TotalEntries)
+				} else {
+					log.Printf("WARNING: Ingestor flush timeout after %v", ingestorTimeout)
+				}
+				goto shutdownComplete
+			}
 		}
 
+	shutdownComplete:
 		// Step 3: Cancel context to stop background workers (alerts, retention, etc.)
 		log.Println("Stopping background workers...")
 		rootCancel()

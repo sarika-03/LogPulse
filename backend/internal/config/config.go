@@ -9,11 +9,11 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Storage   StorageConfig   `yaml:"storage"`
-	Ingest    IngestConfig    `yaml:"ingest"`
-	Auth      AuthConfig      `yaml:"auth"`
-	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Server   ServerConfig   `yaml:"server"`
+	Storage  StorageConfig  `yaml:"storage"`
+	Ingest   IngestConfig   `yaml:"ingest"`
+	Auth     AuthConfig     `yaml:"auth"`
+	Shutdown ShutdownConfig `yaml:"shutdown"`
 }
 
 type ServerConfig struct {
@@ -42,13 +42,10 @@ type AuthConfig struct {
 	APIKey  string `yaml:"api_key"`
 }
 
-type RateLimitConfig struct {
-	Enabled           bool     `yaml:"enabled"`
-	RequestsPerMinute int      `yaml:"requests_per_minute"`
-	Burst             int      `yaml:"burst"`
-	WhitelistIPs      []string `yaml:"whitelist_ips"`
-	BlacklistIPs      []string `yaml:"blacklist_ips"`
-	TrustedProxies    []string `yaml:"trusted_proxies"` // IPs of reverse proxies we trust
+type ShutdownConfig struct {
+	HTTPTimeout     int `yaml:"http_timeout_seconds"`
+	IngestorTimeout int `yaml:"ingestor_timeout_seconds"`
+	ProgressLog     int `yaml:"progress_log_interval_seconds"`
 }
 
 func Load(path string) (*Config, error) {
@@ -61,6 +58,17 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+
+	// Validate and clamp shutdown timeouts to prevent panics
+	if cfg.Shutdown.HTTPTimeout <= 0 {
+		cfg.Shutdown.HTTPTimeout = 30 // Default to 30 seconds
+	}
+	if cfg.Shutdown.IngestorTimeout <= 0 {
+		cfg.Shutdown.IngestorTimeout = 30 // Default to 30 seconds
+	}
+	if cfg.Shutdown.ProgressLog <= 0 {
+		cfg.Shutdown.ProgressLog = 2 // Default to 2 seconds
 	}
 
 	// Override with environment variables
@@ -132,13 +140,10 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			APIKey:  "",
 		},
-		RateLimit: RateLimitConfig{
-			Enabled:           true,
-			RequestsPerMinute: 1000,
-			Burst:             100,
-			WhitelistIPs:      []string{},
-			BlacklistIPs:      []string{},
-			TrustedProxies:    []string{},
+		Shutdown: ShutdownConfig{
+			HTTPTimeout:     30,
+			IngestorTimeout: 30,
+			ProgressLog:     2,
 		},
 	}
 }
