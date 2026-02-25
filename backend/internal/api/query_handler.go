@@ -34,6 +34,7 @@ func (h *QueryHandler) Query(w http.ResponseWriter, r *http.Request) {
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
 	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
 
 	// Parse time range
 	var startTime, endTime time.Time
@@ -68,8 +69,17 @@ func (h *QueryHandler) Query(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse offset
+	offset := 0
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			offset = 0
+		}
+	}
+
 	// Execute query
-	result, err := h.executor.Execute(queryStr, startTime, endTime, limit)
+	result, err := h.executor.Execute(queryStr, startTime, endTime, limit, offset)
 	if err != nil {
 		http.Error(w, "Query error: "+err.Error(), http.StatusBadRequest)
 		return
