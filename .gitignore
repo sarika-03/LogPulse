@@ -1,0 +1,74 @@
+# Backend - Go dependencies and build artifacts
+backend/bin/
+backend/dist/
+backend/vendor/
+*.o
+*.a
+*.so
+.DS_Store
+
+# Backend - Test artifacts
+*.test
+*.out
+
+# Frontend - Node dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+.yarn/cache
+.yarn/install-state.gz
+
+# Frontend - Build artifacts
+dist/
+build/
+.next/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.env.local
+.env.*.local
+
+# OS-specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Logs
+logs/
+*.log
+server.log
+
+# Configuration files (local overrides)
+.env
+.env.development
+.env.production
+
+# Storage and temporary data
+data/
+tmp/
+temp/
+*.tmp
+
+# Build outputs
+/backend/cmd/server/server
+/backend/cmd/agent/agent
+*.exe
+
+# Workspace files
+.vscode/settings.json
+
+# Docker
+.dockerignore
+
+# Cover reports
+*.cover
+coverage/
+
+# Generated SDK files (but keep the templates)
+sdk/insight_stream.py.generated
+sdk/insight-stream.js.generated
