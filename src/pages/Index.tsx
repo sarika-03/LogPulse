@@ -31,9 +31,10 @@ const Index = () => {
   const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
   const [currentTimeRange, setCurrentTimeRange] = useState('1h');
   
-  const { history, addQueryToHistory, clearHistory } = useQueryHistory();
+  // ✅ Pro-Features Hook Destructuring
+  const { history, addQueryToHistory, togglePin, clearHistory, exportHistory } = useQueryHistory();
 
-  // Use the backend connection hook
+  // ✅ Cleaned up Backend Connection (No bypass!)
   const { 
     status, 
     health, 
@@ -45,7 +46,6 @@ const Index = () => {
     isConnected 
   } = useBackendConnection();
 
-  // Auto-open settings if not connected on mount
   useEffect(() => {
     const hasConfig = localStorage.getItem('logpulse_config');
     if (!hasConfig && !isConnected) {
@@ -57,17 +57,31 @@ const Index = () => {
     }
   }, [isConnected]);
 
-  // Auto-refresh logs when tab becomes visible again
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && isConnected && activeTab === 'logs' && logs.length > 0) {
         handleRefresh();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isConnected, activeTab, logs.length]);
+
+  // ✅ Keyboard Shortcut for History Panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+        e.preventDefault();
+        document.querySelector('[data-history-panel]')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+        toast.info('Navigated to Query History');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const parseQuery = (query: string): Record<string, string> => {
     const labels: Record<string, string> = {};
@@ -100,18 +114,13 @@ const Index = () => {
       '6h': 6 * 60 * 60 * 1000,
       '24h': 24 * 60 * 60 * 1000,
     };
-
     const duration = durations[range] || durations['1h'];
     const start = new Date(now.getTime() - duration);
-
-    return {
-      start: start.toISOString(),
-      end: now.toISOString(),
-    };
+    return { start: start.toISOString(), end: now.toISOString() };
   };
 
   const handleQuery = useCallback(async (query: string, timeRange: string) => {
-    // SECURITY CHECK IS BACK ACTIVE (DO NOT REMOVE FOR PRODUCTION)
+    // ✅ Real Security Check Restored
     if (!isConnected) {
       toast.error('Not connected to backend', {
         description: 'Click the settings icon to configure your connection',
@@ -125,13 +134,17 @@ const Index = () => {
     setIsLoading(true);
     
     try {
+      // ✅ Real API Call Restored
       const labels = parseQuery(query);
       const { start, end } = getTimeRange(timeRange);
       
+      console.log('[Query] Executing:', { query, labels, start, end });
       const result = await apiClient.query(labels, start, end, 1000);
       
       setLogs(result.logs);
       setQueryStats(result.stats);
+      
+      console.log('[Query] Results:', { count: result.logs.length, stats: result.stats });
       
       if (result.logs.length === 0) {
         toast.info('No logs found', {
@@ -144,6 +157,7 @@ const Index = () => {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Query failed';
+      console.error('[Query] Error:', errorMessage);
       toast.error('Query failed', { description: errorMessage });
       setLogs([]);
       setQueryStats(undefined);
@@ -273,11 +287,16 @@ const Index = () => {
                           currentTimeRange={currentTimeRange}
                         />
                         <div className="border-t border-border mt-4 pt-4">
-                          <QueryHistory 
-                            history={history}
-                            clearHistory={clearHistory}
-                            onRunQuery={(q) => handleQuery(q, currentTimeRange)}
-                          />
+                          {/* ✅ JSX wrapper & advanced props included */}
+                          <div data-history-panel>
+                            <QueryHistory 
+                              history={history}
+                              clearHistory={clearHistory}
+                              togglePin={togglePin}
+                              exportHistory={exportHistory}
+                              onRunQuery={(q) => handleQuery(q, currentTimeRange)}
+                            />
+                          </div>
                         </div>
                       </div>
                     )}
