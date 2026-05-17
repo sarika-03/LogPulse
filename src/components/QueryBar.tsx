@@ -1,5 +1,5 @@
 import { Search, Play, Clock, RefreshCw, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const timeRanges = [
   { label: 'Last 5 minutes', value: '5m', duration: 5 },
@@ -13,11 +13,18 @@ interface QueryBarProps {
   onRefresh: () => void;
   isLoading: boolean;
   isConnected: boolean;
+  currentQuery?: string;
 }
 
-export function QueryBar({ onQuery, onRefresh, isLoading, isConnected }: QueryBarProps) {
-  const [query, setQuery] = useState('{service="api-gateway"}');
+export function QueryBar({ onQuery, onRefresh, isLoading, isConnected, currentQuery }: QueryBarProps) {
+  const [query, setQuery] = useState(currentQuery || '{service="api-gateway"}');
   const [selectedRange, setSelectedRange] = useState('1h');
+
+  useEffect(() => {
+    if (currentQuery) {
+      setQuery(currentQuery);
+    }
+  }, [currentQuery]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

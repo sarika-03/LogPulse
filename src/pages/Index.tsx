@@ -10,6 +10,8 @@ import { AlertConfig } from '@/components/AlertConfig';
 import { LiveStream } from '@/components/LiveStream';
 import { AnalyticsCharts } from '@/components/AnalyticsCharts';
 import { SavedSearches } from '@/components/SavedSearches';
+import { QueryHistory } from '@/components/QueryHistory';
+import { useQueryHistory } from '@/hooks/useQueryHistory';
 import { useBackendConnection } from '@/hooks/useBackendConnection';
 import { LogEntry, BackendConfig, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
@@ -28,6 +30,8 @@ const Index = () => {
   const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
   const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
   const [currentTimeRange, setCurrentTimeRange] = useState('1h');
+  
+  const { history, addQueryToHistory, clearHistory } = useQueryHistory();
 
   // Use the backend connection hook
   const { 
@@ -45,7 +49,6 @@ const Index = () => {
   useEffect(() => {
     const hasConfig = localStorage.getItem('logpulse_config');
     if (!hasConfig && !isConnected) {
-      // Show settings after a short delay to allow initial render
       const timer = setTimeout(() => {
         setShowSettings(true);
         toast.info('Welcome to LogPulse! Configure your backend to get started.');
@@ -68,11 +71,7 @@ const Index = () => {
 
   const parseQuery = (query: string): Record<string, string> => {
     const labels: Record<string, string> = {};
-    
-    // Handle empty query
-    if (!query || query === '{}') {
-      return labels;
-    }
+    if (!query || query === '{}') return labels;
 
     try {
       const match = query.match(/\{(.+)\}/);
@@ -89,7 +88,6 @@ const Index = () => {
       console.error('[Query] Parse error:', err);
       toast.error('Invalid query syntax');
     }
-
     return labels;
   };
 
@@ -113,6 +111,7 @@ const Index = () => {
   };
 
   const handleQuery = useCallback(async (query: string, timeRange: string) => {
+    // SECURITY CHECK IS BACK ACTIVE (DO NOT REMOVE FOR PRODUCTION)
     if (!isConnected) {
       toast.error('Not connected to backend', {
         description: 'Click the settings icon to configure your connection',
@@ -122,19 +121,17 @@ const Index = () => {
 
     setCurrentQuery(query);
     setCurrentTimeRange(timeRange);
+    addQueryToHistory(query);
     setIsLoading(true);
     
     try {
       const labels = parseQuery(query);
       const { start, end } = getTimeRange(timeRange);
       
-      console.log('[Query] Executing:', { query, labels, start, end });
       const result = await apiClient.query(labels, start, end, 1000);
       
       setLogs(result.logs);
       setQueryStats(result.stats);
-      
-      console.log('[Query] Results:', { count: result.logs.length, stats: result.stats });
       
       if (result.logs.length === 0) {
         toast.info('No logs found', {
@@ -147,14 +144,13 @@ const Index = () => {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Query failed';
-      console.error('[Query] Error:', errorMessage);
       toast.error('Query failed', { description: errorMessage });
       setLogs([]);
       setQueryStats(undefined);
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, addQueryToHistory]);
 
   const handleRefresh = useCallback(() => {
     if (isConnected) {
@@ -168,7 +164,6 @@ const Index = () => {
     const success = await connect(newConfig);
     if (success) {
       setShowSettings(false);
-      // Auto-run initial query after successful connection
       setTimeout(() => {
         handleQuery(currentQuery, currentTimeRange);
       }, 500);
@@ -211,7 +206,6 @@ const Index = () => {
       
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Tab navigation */}
           <div className="flex items-center border-b border-border px-4 bg-card/30">
             <div className="flex">
               {tabs.map((tab) => (
@@ -258,7 +252,6 @@ const Index = () => {
             </div>
           </div>
           
-          {/* Tab content */}
           <div className="flex-1 overflow-hidden flex">
             <div className="flex-1 flex flex-col overflow-hidden">
               {activeTab === 'logs' && (
@@ -268,17 +261,24 @@ const Index = () => {
                     onRefresh={handleRefresh}
                     isLoading={isLoading}
                     isConnected={isConnected}
+                    currentQuery={currentQuery}
                   />
                   
                   <div className="flex-1 overflow-hidden flex">
-                    {/* Saved Searches Sidebar */}
                     {isConnected && (
-                      <div className="w-64 border-r border-border bg-card/50">
+                      <div className="w-64 border-r border-border bg-card/50 flex flex-col">
                         <SavedSearches
                           onExecuteSearch={handleQuery}
                           currentQuery={currentQuery}
                           currentTimeRange={currentTimeRange}
                         />
+                        <div className="border-t border-border mt-4 pt-4">
+                          <QueryHistory 
+                            history={history}
+                            clearHistory={clearHistory}
+                            onRunQuery={(q) => handleQuery(q, currentTimeRange)}
+                          />
+                        </div>
                       </div>
                     )}
                     
@@ -311,28 +311,13 @@ const Index = () => {
                 </>
               )}
 
-              {activeTab === 'live' && (
-                <LiveStream isConnected={isConnected} />
-              )}
-
-              {activeTab === 'labels' && (
-                <LabelsExplorer isConnected={isConnected} />
-              )}
-
-              {activeTab === 'metrics' && (
-                <MetricsDashboard isConnected={isConnected} />
-              )}
-
-              {activeTab === 'analytics' && (
-                <AnalyticsCharts isConnected={isConnected} />
-              )}
-
-              {activeTab === 'alerts' && (
-                <AlertConfig isConnected={isConnected} />
-              )}
+              {activeTab === 'live' && <LiveStream isConnected={isConnected} />}
+              {activeTab === 'labels' && <LabelsExplorer isConnected={isConnected} />}
+              {activeTab === 'metrics' && <MetricsDashboard isConnected={isConnected} />}
+              {activeTab === 'analytics' && <AnalyticsCharts isConnected={isConnected} />}
+              {activeTab === 'alerts' && <AlertConfig isConnected={isConnected} />}
             </div>
 
-            {/* Right panel */}
             {rightPanel === 'test' && isConnected && (
               <TestPanel isConnected={isConnected} />
             )}
@@ -352,6 +337,3 @@ const Index = () => {
 };
 
 export default Index;
-
-
-
