@@ -12,6 +12,7 @@ interface LiveStreamProps {
 export function LiveStream({ isConnected }: LiveStreamProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [filter, setFilter] = useState<Record<string, string>>({});
   const [filterInput, setFilterInput] = useState('');
@@ -70,15 +71,31 @@ export function LiveStream({ isConnected }: LiveStreamProps) {
     const unsubLog = logStreamClient.on('log', handleLog);
     const unsubConnected = logStreamClient.on('connected', () => {
       console.log('Stream connected');
+      setIsStreaming(true);
+      setIsReconnecting(false);
     });
     const unsubDisconnected = logStreamClient.on('disconnected', () => {
       setIsStreaming(false);
+      setIsReconnecting(false);
+    });
+    const unsubReconnecting = logStreamClient.on('reconnecting', (msg) => {
+      console.log('Stream reconnecting:', msg.message);
+      setIsReconnecting(true);
+      setIsStreaming(true); // Keep UI showing stream controls but in reconnecting state
+    });
+    const unsubReconnected = logStreamClient.on('reconnected', () => {
+      console.log('Stream reconnected');
+      setIsStreaming(true);
+      setIsReconnecting(false);
+      toast.success('Connection successfully restored');
     });
 
     return () => {
       unsubLog();
       unsubConnected();
       unsubDisconnected();
+      unsubReconnecting();
+      unsubReconnected();
     };
   }, [handleLog]);
 
@@ -193,9 +210,9 @@ export function LiveStream({ isConnected }: LiveStreamProps) {
         <div className="flex items-center gap-4 text-sm">
           {isStreaming && (
             <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${isPaused ? 'bg-warning' : 'bg-success animate-pulse'}`} />
+              <div className={`h-2 w-2 rounded-full ${isReconnecting ? 'bg-warning animate-pulse' : isPaused ? 'bg-warning' : 'bg-success animate-pulse'}`} />
               <span className="text-muted-foreground font-mono">
-                {isPaused ? 'Paused' : 'Streaming'}
+                {isReconnecting ? 'Reconnecting...' : (isPaused ? 'Paused' : 'Streaming')}
               </span>
             </div>
           )}
