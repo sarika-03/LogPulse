@@ -167,8 +167,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1">Name</label>
+              <label htmlFor="alert-name" className="block text-xs font-medium mb-1">Name</label>
               <input
+                id="alert-name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -177,8 +178,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Severity</label>
+              <label htmlFor="alert-severity" className="block text-xs font-medium mb-1">Severity</label>
               <select
+                id="alert-severity"
                 value={formData.severity}
                 onChange={(e) => setFormData({ ...formData, severity: e.target.value as any })}
                 className="query-input w-full text-sm py-2 text-foreground"
@@ -191,8 +193,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Query</label>
+            <label htmlFor="alert-query" className="block text-xs font-medium mb-1">Query</label>
             <input
+              id="alert-query"
               type="text"
               value={formData.query}
               onChange={(e) => setFormData({ ...formData, query: e.target.value })}
@@ -203,8 +206,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1">Condition</label>
+              <label htmlFor="alert-condition" className="block text-xs font-medium mb-1">Condition</label>
               <select
+                id="alert-condition"
                 value={formData.condition}
                 onChange={(e) => setFormData({ ...formData, condition: e.target.value as any })}
                 className="query-input w-full text-sm py-2 text-foreground"
@@ -217,8 +221,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Threshold</label>
+              <label htmlFor="alert-threshold" className="block text-xs font-medium mb-1">Threshold</label>
               <input
+                id="alert-threshold"
                 type="number"
                 value={formData.threshold}
                 onChange={(e) => setFormData({ ...formData, threshold: parseInt(e.target.value) })}
@@ -226,8 +231,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Duration</label>
+              <label htmlFor="alert-duration" className="block text-xs font-medium mb-1">Duration</label>
               <select
+                id="alert-duration"
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                 className="query-input w-full text-sm py-2 text-foreground"
@@ -241,8 +247,9 @@ export function AlertConfig({ isConnected }: AlertConfigProps) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Webhook URL (optional)</label>
+            <label htmlFor="alert-webhook" className="block text-xs font-medium mb-1">Webhook URL (optional)</label>
             <input
+              id="alert-webhook"
               type="text"
               value={formData.webhook}
               onChange={(e) => setFormData({ ...formData, webhook: e.target.value })}
