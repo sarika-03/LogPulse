@@ -1,7 +1,7 @@
 import { BackendConfig } from '@/types/logs';
 
 export interface StreamMessage {
-  type: 'connected' | 'log' | 'filter_updated' | 'error' | 'reconnecting' | 'reconnected';
+  type: 'connected' | 'log' | 'filter_updated' | 'error' | 'reconnecting' | 'reconnected' | 'disconnected';
   data?: {
     id: string;
     timestamp: string;
@@ -22,6 +22,7 @@ export class LogStreamClient {
   private listeners: Map<string, Set<(msg: StreamMessage) => void>> = new Map();
   private config: BackendConfig | null = null;
   private filter: Record<string, string> = {};
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.listeners.set('log', new Set());
@@ -36,6 +37,10 @@ export class LogStreamClient {
     this.config = config;
     this.filter = filter;
     this.reconnectAttempts = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.doConnect();
   }
 
@@ -91,7 +96,7 @@ export class LogStreamClient {
 
       this.ws.onclose = (event) => {
         console.log('[LogStream] Disconnected:', event.code, event.reason);
-        this.emit('disconnected', { type: 'disconnected' as any, message: 'Disconnected' });
+        this.emit('disconnected', { type: 'disconnected', message: 'Disconnected' });
         if (this.config) {
           this.attemptReconnect();
         }
@@ -124,7 +129,11 @@ export class LogStreamClient {
       attempt: this.reconnectAttempts
     });
 
-    setTimeout(() => {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (this.config) {
         this.doConnect();
       }
@@ -144,6 +153,10 @@ export class LogStreamClient {
 
   disconnect(): void {
     this.config = null; // Set to null before closing to prevent reconnection
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
