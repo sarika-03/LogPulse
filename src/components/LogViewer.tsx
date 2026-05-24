@@ -1,6 +1,7 @@
 import { LogEntry, LogLevel } from '@/types/logs';
 import { ChevronRight, Copy } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { LogExport } from './LogExport';
 
@@ -17,6 +18,73 @@ interface LogViewerProps {
 
 export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewerProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  const scrollParentRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const matchedLogIndexes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    return logs
+      .map((log, index) => {
+        const searchableText = [
+          log.timestamp,
+          log.message,
+          JSON.stringify(log.labels),
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return searchableText.includes(query) ? index : -1;
+      })
+      .filter((index) => index !== -1);
+  }, [logs, searchQuery]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => 56,
+    overscan: 12,
+  });
+
+  useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, []);
+
+  useEffect(() => {
+    setActiveMatchIndex(0);
+
+    if (matchedLogIndexes.length > 0) {
+      rowVirtualizer.scrollToIndex(matchedLogIndexes[0], {
+        align: 'center',
+      });
+    }
+  }, [searchQuery, matchedLogIndexes, rowVirtualizer]);
+
+  const goToMatch = (direction: 1 | -1) => {
+    if (matchedLogIndexes.length === 0) return;
+
+    const nextIndex =
+      (activeMatchIndex + direction + matchedLogIndexes.length) %
+      matchedLogIndexes.length;
+
+    setActiveMatchIndex(nextIndex);
+
+    rowVirtualizer.scrollToIndex(matchedLogIndexes[nextIndex], {
+      align: 'center',
+    });
+  };
 
   if (!isConnected) {
     return (
@@ -55,8 +123,8 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
   }
 
   return (
-    <div className="flex-1 overflow-auto scrollbar-thin flex flex-col">
-      <div className="px-6 py-2 bg-muted/30 border-b border-border flex items-center justify-between">
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="px-6 py-2 bg-muted/30 border-b border-border flex items-center justify-between gap-4">
         <div className="flex items-center gap-6 text-xs font-mono">
           {queryStats && (
             <>
@@ -75,18 +143,79 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
             Results: <span className="text-foreground">{logs.length}</span>
           </span>
         </div>
-        <LogExport logs={logs} />
-      </div>
-      <div className="divide-y divide-border/50 flex-1">
-        {logs.map((log, index) => (
-          <LogLine
-            key={log.id}
-            log={log}
-            isExpanded={expandedId === log.id}
-            onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)}
-            delay={index * 20}
+
+        <div className="flex items-center gap-2">
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                goToMatch(e.shiftKey ? -1 : 1);
+              }
+            }}
+            placeholder="Search in logs (Ctrl+F)"
+            className="h-8 w-64 rounded-md border border-border bg-background px-3 text-xs font-mono outline-none focus:ring-2 focus:ring-primary/40"
           />
-        ))}
+
+          <span className="text-xs font-mono text-muted-foreground min-w-[48px]">
+            {matchedLogIndexes.length > 0
+              ? `${activeMatchIndex + 1}/${matchedLogIndexes.length}`
+              : '0/0'}
+          </span>
+
+          <button
+            onClick={() => goToMatch(-1)}
+            className="h-8 px-2 rounded-md border border-border text-xs hover:bg-muted"
+          >
+            ↑
+          </button>
+
+          <button
+            onClick={() => goToMatch(1)}
+            className="h-8 px-2 rounded-md border border-border text-xs hover:bg-muted"
+          >
+            ↓
+          </button>
+
+          <LogExport logs={logs} />
+        </div>
+      </div>
+
+      <div ref={scrollParentRef} className="flex-1 overflow-auto scrollbar-thin">
+        <div
+          className="relative divide-y divide-border/50"
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const log = logs[virtualRow.index];
+            const isActiveMatch =
+              matchedLogIndexes[activeMatchIndex] === virtualRow.index;
+
+            return (
+              <div
+                key={log.id}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                className="absolute left-0 top-0 w-full"
+                style={{
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <LogLine
+                  log={log}
+                  isExpanded={expandedId === log.id}
+                  isActiveMatch={isActiveMatch}
+                  onToggle={() =>
+                    setExpandedId(expandedId === log.id ? null : log.id)
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -95,13 +224,13 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
 interface LogLineProps {
   log: LogEntry;
   isExpanded: boolean;
+  isActiveMatch: boolean;
   onToggle: () => void;
-  delay: number;
 }
 
-function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
+function LogLine({ log, isExpanded, isActiveMatch, onToggle }: LogLineProps) {
   const level = (log.labels?.level as LogLevel) || 'info';
-  
+
   const levelStyles: Record<LogLevel, string> = {
     error: 'log-level-error',
     warn: 'log-level-warn',
@@ -127,8 +256,9 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
 
   return (
     <div
-      className={`${levelStyles[level]} cursor-pointer animate-log-appear`}
-      style={{ animationDelay: `${delay}ms` }}
+      className={`${levelStyles[level]} group cursor-pointer ${
+        isActiveMatch ? 'bg-primary/15 ring-1 ring-primary/40' : ''
+      }`}
       onClick={onToggle}
     >
       <div className="flex items-start gap-3 py-2">
@@ -137,7 +267,7 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
             isExpanded ? 'rotate-90' : ''
           }`}
         />
-        
+
         <span className="text-muted-foreground font-mono text-xs flex-shrink-0 w-[180px]">
           {log.timestamp}
         </span>
@@ -178,6 +308,7 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
                   ))}
                 </div>
               </div>
+
               <div>
                 <p className="text-muted-foreground text-xs mb-2">Metadata</p>
                 <div className="space-y-1 text-xs">
@@ -192,7 +323,7 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-4 pt-4 border-t border-border/50">
               <p className="text-muted-foreground text-xs mb-2">Full Message</p>
               <p className="text-foreground break-all">{log.message}</p>
