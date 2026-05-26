@@ -49,3 +49,4 @@ Click the **Fork** button on GitHub and clone your fork locally.
 ```bash
 git clone https://github.com/your-username/LogPulse.git
 cd LogPulse
+```

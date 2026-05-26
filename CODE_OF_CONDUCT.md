@@ -41,7 +41,9 @@ This Code of Conduct applies within all community spaces and when an individual 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainers.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported through the repository issue tracker or by contacting the project maintainers directly.
+
+All reports will be reviewed confidentially and handled respectfully.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
@@ -53,3 +55,5 @@ This Code of Conduct is adapted from the Contributor Covenant, version 2.1.
 
 For more information, visit:
 https://www.contributor-covenant.org/version/2/1/code_of_conduct/
+
+
