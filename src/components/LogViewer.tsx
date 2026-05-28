@@ -53,8 +53,9 @@ export function LogViewer({ logs, isLoading, isConnected, queryStats }: LogViewe
   useEffect(() => {
     const handleSearchShortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+       if (!searchInputRef.current) return;
         event.preventDefault();
-        searchInputRef.current?.focus();
+        searchInputRef.current.focus();
       }
     };
 
@@ -256,7 +257,7 @@ function LogLine({ log, isExpanded, isActiveMatch, onToggle }: LogLineProps) {
 
   return (
     <div
-      className={`${levelStyles[level]} group cursor-pointer ${
+      className={`${levelStyles[level]} group cursor-pointer animate-log-appear ${
         isActiveMatch ? 'bg-primary/15 ring-1 ring-primary/40' : ''
       }`}
       onClick={onToggle}
