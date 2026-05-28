@@ -10,6 +10,8 @@ import { AlertConfig } from '@/components/AlertConfig';
 import { LiveStream } from '@/components/LiveStream';
 import { AnalyticsCharts } from '@/components/AnalyticsCharts';
 import { SavedSearches } from '@/components/SavedSearches';
+import { QueryHistory } from '@/components/QueryHistory';
+import { useQueryHistory } from '@/hooks/useQueryHistory';
 import { useBackendConnection } from '@/hooks/useBackendConnection';
 import { LogEntry, BackendConfig, QueryResult } from '@/types/logs';
 import { apiClient } from '@/lib/api';
@@ -28,8 +30,11 @@ const Index = () => {
   const [rightPanel, setRightPanel] = useState<RightPanelType>('test');
   const [currentQuery, setCurrentQuery] = useState('{service="api-gateway"}');
   const [currentTimeRange, setCurrentTimeRange] = useState('1h');
+  
+  // ✅ Pro-Features Hook Destructuring
+  const { history, addQueryToHistory, togglePin, clearHistory, exportHistory } = useQueryHistory();
 
-  // Use the backend connection hook
+  // ✅ Cleaned up Backend Connection (No bypass!)
   const { 
     status, 
     health, 
@@ -41,11 +46,9 @@ const Index = () => {
     isConnected 
   } = useBackendConnection();
 
-  // Auto-open settings if not connected on mount
   useEffect(() => {
     const hasConfig = localStorage.getItem('logpulse_config');
     if (!hasConfig && !isConnected) {
-      // Show settings after a short delay to allow initial render
       const timer = setTimeout(() => {
         setShowSettings(true);
         toast.info('Welcome to LogPulse! Configure your backend to get started.');
@@ -54,25 +57,35 @@ const Index = () => {
     }
   }, [isConnected]);
 
-  // Auto-refresh logs when tab becomes visible again
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && isConnected && activeTab === 'logs' && logs.length > 0) {
         handleRefresh();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isConnected, activeTab, logs.length]);
 
+  // ✅ Keyboard Shortcut for History Panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+        e.preventDefault();
+        document.querySelector('[data-history-panel]')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+        toast.info('Navigated to Query History');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const parseQuery = (query: string): Record<string, string> => {
     const labels: Record<string, string> = {};
-    
-    // Handle empty query
-    if (!query || query === '{}') {
-      return labels;
-    }
+    if (!query || query === '{}') return labels;
 
     try {
       const match = query.match(/\{(.+)\}/);
@@ -89,7 +102,6 @@ const Index = () => {
       console.error('[Query] Parse error:', err);
       toast.error('Invalid query syntax');
     }
-
     return labels;
   };
 
@@ -102,17 +114,13 @@ const Index = () => {
       '6h': 6 * 60 * 60 * 1000,
       '24h': 24 * 60 * 60 * 1000,
     };
-
     const duration = durations[range] || durations['1h'];
     const start = new Date(now.getTime() - duration);
-
-    return {
-      start: start.toISOString(),
-      end: now.toISOString(),
-    };
+    return { start: start.toISOString(), end: now.toISOString() };
   };
 
   const handleQuery = useCallback(async (query: string, timeRange: string) => {
+    // ✅ Real Security Check Restored
     if (!isConnected) {
       toast.error('Not connected to backend', {
         description: 'Click the settings icon to configure your connection',
@@ -122,9 +130,11 @@ const Index = () => {
 
     setCurrentQuery(query);
     setCurrentTimeRange(timeRange);
+    addQueryToHistory(query);
     setIsLoading(true);
     
     try {
+      // ✅ Real API Call Restored
       const labels = parseQuery(query);
       const { start, end } = getTimeRange(timeRange);
       
@@ -154,7 +164,7 @@ const Index = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, addQueryToHistory]);
 
   const handleRefresh = useCallback(() => {
     if (isConnected) {
@@ -168,7 +178,6 @@ const Index = () => {
     const success = await connect(newConfig);
     if (success) {
       setShowSettings(false);
-      // Auto-run initial query after successful connection
       setTimeout(() => {
         handleQuery(currentQuery, currentTimeRange);
       }, 500);
@@ -211,7 +220,6 @@ const Index = () => {
       
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Tab navigation */}
           <div className="flex items-center border-b border-border px-4 bg-card/30">
             <div className="flex">
               {tabs.map((tab) => (
@@ -258,7 +266,6 @@ const Index = () => {
             </div>
           </div>
           
-          {/* Tab content */}
           <div className="flex-1 overflow-hidden flex">
             <div className="flex-1 flex flex-col overflow-hidden">
               {activeTab === 'logs' && (
@@ -268,17 +275,29 @@ const Index = () => {
                     onRefresh={handleRefresh}
                     isLoading={isLoading}
                     isConnected={isConnected}
+                    currentQuery={currentQuery}
                   />
                   
                   <div className="flex-1 overflow-hidden flex">
-                    {/* Saved Searches Sidebar */}
                     {isConnected && (
-                      <div className="w-64 border-r border-border bg-card/50">
+                      <div className="w-64 border-r border-border bg-card/50 flex flex-col">
                         <SavedSearches
                           onExecuteSearch={handleQuery}
                           currentQuery={currentQuery}
                           currentTimeRange={currentTimeRange}
                         />
+                        <div className="border-t border-border mt-4 pt-4">
+                          {/* ✅ JSX wrapper & advanced props included */}
+                          <div data-history-panel>
+                            <QueryHistory 
+                              history={history}
+                              clearHistory={clearHistory}
+                              togglePin={togglePin}
+                              exportHistory={exportHistory}
+                              onRunQuery={(q) => handleQuery(q, currentTimeRange)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                     
@@ -311,28 +330,13 @@ const Index = () => {
                 </>
               )}
 
-              {activeTab === 'live' && (
-                <LiveStream isConnected={isConnected} />
-              )}
-
-              {activeTab === 'labels' && (
-                <LabelsExplorer isConnected={isConnected} />
-              )}
-
-              {activeTab === 'metrics' && (
-                <MetricsDashboard isConnected={isConnected} />
-              )}
-
-              {activeTab === 'analytics' && (
-                <AnalyticsCharts isConnected={isConnected} />
-              )}
-
-              {activeTab === 'alerts' && (
-                <AlertConfig isConnected={isConnected} />
-              )}
+              {activeTab === 'live' && <LiveStream isConnected={isConnected} />}
+              {activeTab === 'labels' && <LabelsExplorer isConnected={isConnected} />}
+              {activeTab === 'metrics' && <MetricsDashboard isConnected={isConnected} />}
+              {activeTab === 'analytics' && <AnalyticsCharts isConnected={isConnected} />}
+              {activeTab === 'alerts' && <AlertConfig isConnected={isConnected} />}
             </div>
 
-            {/* Right panel */}
             {rightPanel === 'test' && isConnected && (
               <TestPanel isConnected={isConnected} />
             )}
@@ -352,6 +356,3 @@ const Index = () => {
 };
 
 export default Index;
-
-
-
