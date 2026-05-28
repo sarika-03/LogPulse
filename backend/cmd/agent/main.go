@@ -269,13 +269,6 @@ func (a *Agent) tailFile(path string, baseLabels map[string]string) {
 		}
 		labels["filename"] = filepath.Base(path)
 
-		// Auto-detect log level from content
-		for i := range entries {
-			_ = detectLogLevel(entries[i].Line)
-			// Store level in a temporary way - we'll add it to labels per entry
-			entries[i].Line = entries[i].Line // Keep original
-		}
-
 		// For simplicity, add level to labels based on most common level in batch
 		// In production, you'd want per-entry labels
 		labels["level"] = detectLogLevel(entries[0].Line)
