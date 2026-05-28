@@ -127,7 +127,7 @@ function LogLine({ log, isExpanded, onToggle, delay }: LogLineProps) {
 
   return (
     <div
-      className={`${levelStyles[level]} cursor-pointer animate-log-appear`}
+      className={`${levelStyles[level]} group cursor-pointer animate-log-appear`}
       style={{ animationDelay: `${delay}ms` }}
       onClick={onToggle}
     >
