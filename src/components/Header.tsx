@@ -91,6 +91,7 @@ export function Header({ health, status, error, onSettingsClick, onReconnect }: 
             <button
               onClick={onSettingsClick}
               className="p-2 rounded-lg hover:bg-muted transition-colors"
+              aria-label="Settings"
             >
               <Settings className="h-5 w-5 text-muted-foreground hover:text-foreground" />
             </button>
