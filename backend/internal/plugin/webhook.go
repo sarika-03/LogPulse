@@ -32,7 +32,11 @@ func (w *WebhookNotifier) Notify(event string, payload map[string]interface{}) {
 		}
 		go func(url string) {
 			b, _ := json.Marshal(payload)
-			req, _ := http.NewRequest("POST", url, bytes.NewBuffer(b))
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
+			if err != nil {
+				log.Printf("Webhook request creation error: %v", err)
+				return
+			}
 			req.Header.Set("Content-Type", "application/json")
 			client := &http.Client{Timeout: 5 * time.Second}
 			resp, err := client.Do(req)
