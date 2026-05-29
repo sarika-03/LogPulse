@@ -65,6 +65,7 @@ export function QueryBar({ onQuery, onRefresh, isLoading, isConnected }: QueryBa
             onClick={onRefresh}
             disabled={!isConnected || isLoading}
             className="p-2 rounded-lg bg-muted text-muted-foreground hover:text-foreground border border-border transition-all hover:border-primary/50 disabled:opacity-50"
+            aria-label="Refresh"
           >
             <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>

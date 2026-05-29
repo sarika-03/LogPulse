@@ -1,14 +1,14 @@
-import React from 'react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryBar } from '../QueryBar';
 
 describe('QueryBar Component', () => {
-  const mockOnQuery = jest.fn();
-  const mockOnRefresh = jest.fn();
+  const mockOnQuery = vi.fn();
+  const mockOnRefresh = vi.fn();
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('renders query input and buttons correctly', () => {
@@ -114,13 +114,7 @@ describe('QueryBar Component', () => {
       />
     );
 
-    // Refresh button has no explicit accessible name in the JSX except the icon, but it has onClick={onRefresh}
-    // We can select it by its role and filtering, or by class if needed. 
-    // Wait, the button has a RefreshCw icon, we can find it by closest button to the SVG.
-    // Instead let's find it by clicking the button before the "Run Query" button.
-    const buttons = screen.getAllByRole('button');
-    // timeRanges = 4 buttons. Then refresh button. Then Run Query. So index 4 is refresh.
-    const refreshBtn = buttons[4];
+    const refreshBtn = screen.getByRole('button', { name: /refresh/i });
     await user.click(refreshBtn);
 
     expect(mockOnRefresh).toHaveBeenCalledTimes(1);
