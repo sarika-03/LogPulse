@@ -5,22 +5,34 @@ class ApiClient {
 
   setConfig(config: BackendConfig) {
     this.config = config;
-    localStorage.setItem('logpulse_config', JSON.stringify(config));
+    try {
+      localStorage.setItem('logpulse_config', JSON.stringify(config));
+    } catch {
+      // Fail silently for quota or privacy mode errors
+    }
   }
 
   getConfig(): BackendConfig | null {
     if (this.config) return this.config;
-    const stored = localStorage.getItem('logpulse_config');
-    if (stored) {
-      this.config = JSON.parse(stored);
-      return this.config;
+    try {
+      const stored = localStorage.getItem('logpulse_config');
+      if (stored) {
+        this.config = JSON.parse(stored);
+        return this.config;
+      }
+    } catch {
+      // Fail silently if parsing fails or storage is inaccessible
     }
     return null;
   }
 
   clearConfig() {
     this.config = null;
-    localStorage.removeItem('logpulse_config');
+    try {
+      localStorage.removeItem('logpulse_config');
+    } catch {
+      // Fail silently
+    }
   }
 
   private getHeaders(): HeadersInit {
