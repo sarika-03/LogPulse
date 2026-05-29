@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Ingest   IngestConfig   `yaml:"ingest"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Shutdown ShutdownConfig `yaml:"shutdown"`
+	Server    ServerConfig    `yaml:"server"`
+	Storage   StorageConfig   `yaml:"storage"`
+	Ingest    IngestConfig    `yaml:"ingest"`
+	Auth      AuthConfig      `yaml:"auth"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Shutdown  ShutdownConfig  `yaml:"shutdown"`
 }
 
 type ServerConfig struct {
@@ -40,6 +41,15 @@ type IngestConfig struct {
 type AuthConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	APIKey  string `yaml:"api_key"`
+}
+
+type RateLimitConfig struct {
+	Enabled           bool     `yaml:"enabled"`
+	RequestsPerMinute int      `yaml:"requests_per_minute"`
+	Burst             int      `yaml:"burst"`
+	WhitelistIPs      []string `yaml:"whitelist_ips"`
+	BlacklistIPs      []string `yaml:"blacklist_ips"`
+	TrustedProxies    []string `yaml:"trusted_proxies"`
 }
 
 type ShutdownConfig struct {
@@ -144,6 +154,14 @@ func DefaultConfig() *Config {
 			HTTPTimeout:     30,
 			IngestorTimeout: 30,
 			ProgressLog:     2,
+		},
+		RateLimit: RateLimitConfig{
+			Enabled:           true,
+			RequestsPerMinute: 1000,
+			Burst:             100,
+			WhitelistIPs:      []string{},
+			BlacklistIPs:      []string{},
+			TrustedProxies:    []string{},
 		},
 	}
 }

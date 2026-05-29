@@ -1,6 +1,6 @@
 module github.com/logpulse/backend
 
-go 1.21
+go 1.25.0
 
 require (
 	github.com/boltdb/bolt v1.3.1
@@ -11,6 +11,7 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.23.1
 	go.opentelemetry.io/otel/sdk v1.23.1
 	go.opentelemetry.io/otel/trace v1.23.1
+	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
