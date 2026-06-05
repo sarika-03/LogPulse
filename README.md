@@ -1,4 +1,3 @@
-# TOC TEST 999999
 # LogPulse Frontend
 
 Modern React-based web interface for LogPulse log aggregation system.
