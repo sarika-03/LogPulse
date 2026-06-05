@@ -312,6 +312,12 @@ MIT License - see LICENSE file
 - Icons from Lucide React
 - Inspired by Grafana and Kibana
 
+## 👥 Contributors
+
+Thanks to all contributors ❤️
+
+[![Contributors](https://contrib.rocks/image?repo=sarika-03/LogPulse)](https://github.com/sarika-03/LogPulse/graphs/contributors)
+
 ---
 
 **Need help?** Check the [main README](../README.md) or open an issue on GitHub.
