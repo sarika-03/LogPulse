@@ -41,7 +41,11 @@ export function SavedSearches({ onExecuteSearch, currentQuery, currentTimeRange 
   }, []);
 
   const saveToStorage = (newSearches: SavedSearch[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newSearches));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSearches));
+    } catch {
+      // Fail silently for quota or privacy mode errors
+    }
     setSearches(newSearches);
   };
 
