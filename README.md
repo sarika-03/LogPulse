@@ -1,6 +1,24 @@
+# TOC TEST 999999
 # LogPulse Frontend
 
 Modern React-based web interface for LogPulse log aggregation system.
+
+## 📚 Table of Contents
+
+- [🚀 Features](#-features)
+- [📋 Prerequisites](#-prerequisites)
+- [🛠️ Installation](#-installation)
+- [🔧 Configuration](#-configuration)
+- [📖 Usage](#-usage)
+- [🏗️ Project Structure](#-project-structure)
+- [🎨 Customization](#-customization)
+- [🚢 Production Build](#-production-build)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [📝 Development Tips](#-development-tips)
+- [🤝 Contributing](#-contributing)
+- [👥 Contributors](#-contributors)
+- [📄 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
 
 ## 🚀 Features
 
@@ -318,6 +336,7 @@ Thanks to all contributors ❤️
 
 [![Contributors](https://contrib.rocks/image?repo=sarika-03/LogPulse)](https://github.com/sarika-03/LogPulse/graphs/contributors)
 
+<!-- toc update fix -->
 ---
 
 **Need help?** Check the [main README](../README.md) or open an issue on GitHub.
