@@ -319,7 +319,7 @@ yarn test
 
 ## 📄 License
 
-MIT License - see LICENSE file
+MIT License - see the [LICENSE](LICENSE) file.
 
 ## 🙏 Acknowledgments
 
