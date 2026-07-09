@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import { LogExport } from './LogExport';
+import { LogLevelBadge } from './LogLevelBadge';
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -239,13 +240,6 @@ function LogLine({ log, isExpanded, isActiveMatch, onToggle }: LogLineProps) {
     debug: 'log-level-debug',
   };
 
-  const levelBadgeStyles: Record<LogLevel, string> = {
-    error: 'bg-destructive/20 text-destructive border-destructive/30',
-    warn: 'bg-warning/20 text-warning border-warning/30',
-    info: 'bg-info/20 text-info border-info/30',
-    debug: 'bg-muted text-muted-foreground border-border',
-  };
-
   const copyLog = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(JSON.stringify(log, null, 2));
@@ -273,13 +267,7 @@ function LogLine({ log, isExpanded, isActiveMatch, onToggle }: LogLineProps) {
           {log.timestamp}
         </span>
 
-        <span
-          className={`text-xs font-mono uppercase px-2 py-0.5 rounded border flex-shrink-0 w-[60px] text-center ${
-            levelBadgeStyles[level]
-          }`}
-        >
-          {level}
-        </span>
+        <LogLevelBadge level={level} className="flex-shrink-0 w-[60px]" />
 
         <span className="label-badge flex-shrink-0">{service}</span>
         {env && <span className="label-badge flex-shrink-0">{env}</span>}
