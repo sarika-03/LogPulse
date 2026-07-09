@@ -3,9 +3,15 @@ import { render, screen } from '@testing-library/react';
 import { LogLevelBadge } from '../LogLevelBadge';
 
 describe('LogLevelBadge Component', () => {
-  it('renders the level text in uppercase', () => {
+  it('renders the level text', () => {
     render(<LogLevelBadge level="error" />);
     expect(screen.getByText('error')).toBeInTheDocument();
+  });
+
+  it('applies the uppercase class so the text is styled as uppercase', () => {
+    render(<LogLevelBadge level="error" />);
+    const badge = screen.getByText('error');
+    expect(badge.className).toContain('uppercase');
   });
 
   it('applies destructive (red) styling for the error level', () => {

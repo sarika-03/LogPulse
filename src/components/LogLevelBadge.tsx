@@ -1,4 +1,5 @@
 import { LogLevel } from '@/types/logs';
+import { cn } from '@/lib/utils';
 
 /**
  * Tailwind classes for each log level.
@@ -42,10 +43,14 @@ export interface LogLevelBadgeProps {
  * <LogLevelBadge level="error" />
  * ```
  */
-export function LogLevelBadge({ level, className = '' }: LogLevelBadgeProps) {
+export function LogLevelBadge({ level, className }: LogLevelBadgeProps) {
   return (
     <span
-      className={`text-xs font-mono uppercase px-2 py-0.5 rounded border inline-block text-center ${LOG_LEVEL_STYLES[level]} ${className}`}
+      className={cn(
+        'text-xs font-mono uppercase px-2 py-0.5 rounded border inline-block text-center',
+        LOG_LEVEL_STYLES[level],
+        className,
+      )}
     >
       {level}
     </span>
