@@ -31,9 +31,9 @@ Modern React-based web interface for LogPulse log aggregation system.
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
-- npm or yarn
-- Running LogPulse Go backend
+- Node.js 18 or later
+- npm or Yarn
+- A running LogPulse Go backend
 
 ## 🛠️ Installation
 
@@ -63,6 +63,7 @@ yarn dev
 The app will open at `http://localhost:5173`
 
 ## 🔧 Configuration
+Configure the frontend to communicate with your LogPulse backend before using the application.
 
 ### Connect to Backend
 
@@ -272,6 +273,7 @@ docker run -p 3000:80 logpulse-frontend
 4. Refresh the metrics dashboard
 
 ## 📝 Development Tips
+The following tips can help you during local development and debugging.
 
 ### Hot Module Replacement
 
@@ -319,7 +321,7 @@ yarn test
 
 ## 📄 License
 
-MIT License - see LICENSE file
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -331,11 +333,11 @@ MIT License - see LICENSE file
 
 ## 👥 Contributors
 
-Thanks to all contributors ❤️
+A big thank you to everyone who has contributed to LogPulse! ❤️
 
 [![Contributors](https://contrib.rocks/image?repo=sarika-03/LogPulse)](https://github.com/sarika-03/LogPulse/graphs/contributors)
 
 <!-- toc update fix -->
 ---
 
-**Need help?** Check the [main README](../README.md) or open an issue on GitHub.
+***Need help?*** Check the [main README](../README.md) or open an issue in this repository.
