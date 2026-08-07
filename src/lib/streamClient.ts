@@ -14,6 +14,8 @@ export interface StreamMessage {
   attempt?: number;
 }
 
+export type ConnectionStatus = 'connected' | 'reconnecting' | 'failed' | 'disconnected';
+
 export class LogStreamClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
@@ -23,6 +25,7 @@ export class LogStreamClient {
   private config: BackendConfig | null = null;
   private filter: Record<string, string> = {};
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private status: ConnectionStatus = 'disconnected';
 
   constructor() {
     this.listeners.set('log', new Set());
@@ -33,10 +36,22 @@ export class LogStreamClient {
     this.listeners.set('reconnected', new Set());
   }
 
-  connect(config: BackendConfig, filter: Record<string, string> = {}): void {
+  connect(
+    config: BackendConfig,
+    filter: Record<string, string> = {},
+    options?: { maxReconnectAttempts?: number; reconnectDelay?: number }
+  ): void {
     this.config = config;
     this.filter = filter;
     this.reconnectAttempts = 0;
+
+    // Load defaults, respecting options parameter or environment variables
+    const envMaxRetries = typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_MAX_RETRIES;
+    const envDelay = typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_RECONNECT_DELAY;
+    
+    this.maxReconnectAttempts = options?.maxReconnectAttempts ?? (envMaxRetries ? Number(envMaxRetries) : 5);
+    this.reconnectDelay = options?.reconnectDelay ?? (envDelay ? Number(envDelay) : 2000);
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -69,6 +84,7 @@ export class LogStreamClient {
 
       this.ws.onopen = () => {
         console.log('[LogStream] Connected');
+        this.status = 'connected';
         if (this.reconnectAttempts > 0) {
           this.emit('reconnected', { type: 'reconnected', message: 'Connection restored' });
         } else {
@@ -96,6 +112,7 @@ export class LogStreamClient {
 
       this.ws.onclose = (event) => {
         console.log('[LogStream] Disconnected:', event.code, event.reason);
+        this.status = 'disconnected';
         this.emit('disconnected', { type: 'disconnected', message: 'Disconnected' });
         if (this.config) {
           this.attemptReconnect();
@@ -108,6 +125,7 @@ export class LogStreamClient {
       };
     } catch (err) {
       console.error('[LogStream] Connection failed:', err);
+      this.status = 'disconnected';
       this.attemptReconnect();
     }
   }
@@ -115,11 +133,13 @@ export class LogStreamClient {
   private attemptReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log('[LogStream] Max reconnect attempts reached');
+      this.status = 'failed';
       this.emit('error', { type: 'error', message: 'Max reconnect attempts reached. Please refresh.' });
       return;
     }
 
     this.reconnectAttempts++;
+    this.status = 'reconnecting';
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
     console.log(`[LogStream] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
@@ -153,11 +173,17 @@ export class LogStreamClient {
 
   disconnect(): void {
     this.config = null; // Set to null before closing to prevent reconnection
+    this.status = 'disconnected';
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.ws) {
+      // Prevent pending events from firing during/after close
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
@@ -181,6 +207,10 @@ export class LogStreamClient {
 
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  getStatus(): ConnectionStatus {
+    return this.status;
   }
 }
 
